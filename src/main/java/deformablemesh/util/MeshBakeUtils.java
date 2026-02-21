@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MeshBakeUtils {
-    private static final double[] DEFAULT_SHELL_FACTORS = new double[]{1.0, 0.75, 0.55, 0.40, 0.28, 0.20};
+    private static final double[] DEFAULT_SHELL_FACTORS = new double[]{1.0, 0.85, 0.72, 0.60, 0.50, 0.42};
 
     private MeshBakeUtils(){
     }
