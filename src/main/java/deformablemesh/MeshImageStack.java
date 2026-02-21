@@ -110,6 +110,8 @@ public class MeshImageStack {
     protected int SLICES;
     protected int CHANNELS;
     protected double[] bakeTargetData;
+    protected double bakeBlend = 0.25;
+    protected double bakeStrength = 0.5;
 
     public double MIN_VALUE;
     public double MAX_VALUE;
@@ -453,8 +455,10 @@ public class MeshImageStack {
         if(bakeTargetData == null){
             return base;
         }
-        double bake = interpolateFromArray(bakeTargetData, xyz);
-        return Math.max(base, bake);
+        double scaledBake = bakeStrength*interpolateFromArray(bakeTargetData, xyz);
+        double hard = Math.max(base, scaledBake);
+        double eff = (1.0 - bakeBlend)*base + bakeBlend*hard;
+        return clampToTypeRange(eff);
     }
 
     private double interpolateFromArray(double[] volume, double[] xyz){
@@ -1029,5 +1033,41 @@ public class MeshImageStack {
 
     public void clearBakeTargetData(){
         bakeTargetData = null;
+    }
+
+    public void setBakeBlend(double bakeBlend){
+        this.bakeBlend = clampUnitInterval(bakeBlend);
+    }
+
+    public double getBakeBlend(){
+        return bakeBlend;
+    }
+
+    public void setBakeStrength(double bakeStrength){
+        this.bakeStrength = clampUnitInterval(bakeStrength);
+    }
+
+    public double getBakeStrength(){
+        return bakeStrength;
+    }
+
+    private double clampUnitInterval(double v){
+        if(v < 0){
+            return 0;
+        }
+        if(v > 1){
+            return 1;
+        }
+        return v;
+    }
+
+    private double clampToTypeRange(double v){
+        if(type == INT8){
+            return Math.max(0, Math.min(255, v));
+        }
+        if(type == INT16){
+            return Math.max(0, Math.min(65535, v));
+        }
+        return v;
     }
 }
