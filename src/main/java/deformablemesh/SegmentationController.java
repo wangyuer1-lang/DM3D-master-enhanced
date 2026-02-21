@@ -2878,6 +2878,7 @@ public class SegmentationController {
         bakedChannel = channel;
         bakeSelectedMeshEnabled = true;
         refreshCurrentFrameIfShowing(frame, channel);
+        model.notifyMeshListeners();
         FurrowController ringController = getRingController();
         if(ringController != null){
             ringController.cancel();
@@ -2894,6 +2895,8 @@ public class SegmentationController {
             refreshCurrentFrameIfShowing(bakedFrame, bakedChannel);
         }
         clearBakeSelectedMeshState();
+        model.refreshCurrentFrame();
+        model.notifyMeshListeners();
     }
 
     private void refreshCurrentFrameIfShowing(int frame, int channel){

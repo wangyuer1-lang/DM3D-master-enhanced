@@ -601,15 +601,12 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         bakeMeshButton = new JButton("Bake mesh");
         buttons.add(bakeMeshButton);
         bakeMeshButton.addActionListener(evt -> {
-            boolean enableBake = !segmentationController.isBakeSelectedMeshEnabled();
-            if(enableBake && segmentationController.getSelectedMesh() == null){
+            if(segmentationController.getSelectedMeshTrack() == null || segmentationController.getSelectedMesh() == null){
                 IJ.error("Please select a mesh first");
                 return;
             }
+            boolean enableBake = !segmentationController.isSelectedTrackBaked();
             segmentationController.setBakeSelectedMeshEnabled(enableBake);
-            EventQueue.invokeLater(() -> bakeMeshButton.setText(
-                    segmentationController.isBakeSelectedMeshEnabled() ? "Unbake mesh" : "Bake mesh"
-            ));
         });
         return bakeMeshButton;
     }
@@ -1925,11 +1922,6 @@ public class ControlFrame implements ReadyObserver, FrameListener {
     public void frameChanged(int i) {
 
         frameIndicator.update();
-        if(bakeMeshButton != null){
-            bakeMeshButton.setText(
-                    segmentationController.isBakeSelectedMeshEnabled() ? "Unbake mesh" : "Bake mesh"
-            );
-        }
     }
 
     class FrameIndicator{
@@ -2048,4 +2040,3 @@ public class ControlFrame implements ReadyObserver, FrameListener {
     }
 
 }
-

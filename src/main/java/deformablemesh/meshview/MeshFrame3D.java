@@ -755,7 +755,7 @@ public class    MeshFrame3D {
     private void styleMeshForTrack(DeformableMesh3D mesh, Track track, boolean selected){
         if(segmentationController.isTrackBaked(track)){
             Color bakedColor = selected ? Color.GREEN : Color.BLUE;
-            mesh.data_object.setColor(new Color(bakedColor.getRed(), bakedColor.getGreen(), bakedColor.getBlue(), 180));
+            mesh.data_object.setColor(new Color(bakedColor.getRed(), bakedColor.getGreen(), bakedColor.getBlue(), 64));
             mesh.data_object.setShowSurface(true);
             mesh.data_object.setShowWires(false);
             return;
@@ -847,4 +847,3 @@ public class    MeshFrame3D {
 
 
 }
-
