@@ -455,9 +455,18 @@ public class MeshImageStack {
         if(bakeTargetData == null){
             return base;
         }
-        double scaledBake = bakeStrength*interpolateFromArray(bakeTargetData, xyz);
-        double hard = Math.max(base, scaledBake);
-        double eff = (1.0 - bakeBlend)*base + bakeBlend*hard;
+        double target = interpolateFromArray(bakeTargetData, xyz);
+        if(target <= base){
+            return base;
+        }
+        final double strength = 1.0;
+        final double beta = 6.0;
+        double max = getBakeNormalizationMax(base, target);
+        double baseN = base/max;
+        double targetN = target/max;
+        double dN = targetN - baseN;
+        double effN = baseN + strength*softplus(beta*dN)/beta;
+        double eff = effN*max;
         return clampToTypeRange(eff);
     }
 
@@ -1069,5 +1078,26 @@ public class MeshImageStack {
             return Math.max(0, Math.min(65535, v));
         }
         return v;
+    }
+
+    private double softplus(double z){
+        if(z > 40){
+            return z;
+        }
+        if(z < -40){
+            return Math.exp(z);
+        }
+        return Math.log1p(Math.exp(z));
+    }
+
+    private double getBakeNormalizationMax(double base, double target){
+        if(type == INT8){
+            return 255.0;
+        }
+        if(type == INT16){
+            return 65535.0;
+        }
+        double dynamic = Math.max(Math.max(base, target), MAX_VALUE);
+        return dynamic > 0 ? dynamic : 1.0;
     }
 }
