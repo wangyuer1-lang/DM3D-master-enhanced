@@ -82,7 +82,7 @@ public class BakeSelectedMeshOutlineCommand implements Command {
             }
         }
 
-        boolean[] outline = new boolean[voxels];
+        boolean[] outlineMask = new boolean[voxels];
         for (int z = 0; z < depth; z++) {
             for (int y = 0; y < height; y++) {
                 for (int x = 0; x < width; x++) {
@@ -91,13 +91,13 @@ public class BakeSelectedMeshOutlineCommand implements Command {
                         continue;
                     }
                     if (hasOutsideNeighbor(inside, width, height, depth, x, y, z)) {
-                        outline[index] = true;
+                        outlineMask[index] = true;
                     }
                 }
             }
         }
 
-        boolean[] dilated = Arrays.copyOf(outline, outline.length);
+        boolean[] dilated = Arrays.copyOf(outlineMask, outlineMask.length);
         for (int iteration = 1; iteration < thicknessVoxels; iteration++) {
             boolean[] next = Arrays.copyOf(dilated, dilated.length);
             for (int z = 0; z < depth; z++) {
