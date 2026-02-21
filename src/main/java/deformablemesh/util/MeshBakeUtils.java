@@ -12,22 +12,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MeshBakeUtils {
+    private static final double[] DEFAULT_SHELL_FACTORS = new double[]{1.0, 0.75, 0.55, 0.40, 0.28, 0.20};
+
     private MeshBakeUtils(){
     }
 
     public static boolean[] createOutlineMask(MeshImageStack stack, DeformableMesh3D mesh){
         ImagePlus mask = DeformableMesh3DTools.createBinaryRepresentation(stack, mesh);
         return createOutlineMask(mask);
-    }
-
-    public static void applyOutlineToStackData(MeshImageStack stack, boolean[] outline){
-        double bakeValue = getBakeValue(stack);
-        int count = Math.min(outline.length, stack.data.length);
-        for(int i = 0; i < count; i++){
-            if(outline[i]){
-                stack.data[i] = bakeValue;
-            }
-        }
     }
 
     private static double getBakeValue(MeshImageStack stack){
@@ -41,6 +33,82 @@ public class MeshBakeUtils {
             default:
                 return Math.max(255.0, stack.getMaxValue());
         }
+    }
+
+    public static double[] createBakeTargetField(MeshImageStack stack, DeformableMesh3D mesh, int shells){
+        boolean[] outline = createOutlineMask(stack, mesh);
+        int shellCount = shells > 0 ? shells : DEFAULT_SHELL_FACTORS.length;
+        double peak = getBakeValue(stack);
+        int width = stack.getWidthPx();
+        int height = stack.getHeightPx();
+        int depth = stack.getNSlices();
+        int sliceSize = width*height;
+        int total = sliceSize*depth;
+        double[] target = new double[total];
+        boolean[] visited = new boolean[total];
+
+        List<Integer> frontier = new ArrayList<>();
+        for(int i = 0; i<total; i++){
+            if(outline[i]){
+                visited[i] = true;
+                frontier.add(i);
+            }
+        }
+
+        for(int shell = 0; shell<shellCount && !frontier.isEmpty(); shell++){
+            double factor = getShellFactor(shell);
+            double shellValue = peak*factor;
+            for(Integer idx: frontier){
+                if(shellValue > target[idx]){
+                    target[idx] = shellValue;
+                }
+            }
+            if(shell == shellCount - 1){
+                break;
+            }
+            List<Integer> nextFrontier = new ArrayList<>();
+            for(Integer idx: frontier){
+                int z = idx/sliceSize;
+                int rem = idx - z*sliceSize;
+                int y = rem/width;
+                int x = rem - y*width;
+                addNeighbor(x - 1, y, z, width, height, depth, visited, nextFrontier);
+                addNeighbor(x + 1, y, z, width, height, depth, visited, nextFrontier);
+                addNeighbor(x, y - 1, z, width, height, depth, visited, nextFrontier);
+                addNeighbor(x, y + 1, z, width, height, depth, visited, nextFrontier);
+                addNeighbor(x, y, z - 1, width, height, depth, visited, nextFrontier);
+                addNeighbor(x, y, z + 1, width, height, depth, visited, nextFrontier);
+            }
+            frontier = nextFrontier;
+        }
+
+        return target;
+    }
+
+    private static double getShellFactor(int shell){
+        if(shell < DEFAULT_SHELL_FACTORS.length){
+            return DEFAULT_SHELL_FACTORS[shell];
+        }
+        double tail = DEFAULT_SHELL_FACTORS[DEFAULT_SHELL_FACTORS.length - 1];
+        int extra = shell - DEFAULT_SHELL_FACTORS.length + 1;
+        return tail/Math.pow(1.5, extra);
+    }
+
+    private static void addNeighbor(
+            int x, int y, int z,
+            int width, int height, int depth,
+            boolean[] visited,
+            List<Integer> next
+    ){
+        if(x < 0 || x >= width || y < 0 || y >= height || z < 0 || z >= depth){
+            return;
+        }
+        int idx = x + y*width + z*width*height;
+        if(visited[idx]){
+            return;
+        }
+        visited[idx] = true;
+        next.add(idx);
     }
 
     private static boolean[] createOutlineMask(ImagePlus mask){

@@ -137,7 +137,8 @@ public class SegmentationController {
     private Track bakedTrack = null;
     private int bakedFrame = -1;
     private int bakedChannel = -1;
-    private double[] bakedOriginalData = null;
+    private double[] bakedTargetData = null;
+    private final int bakeShells = 6;
     private ImagePlus bakedOverlayPlus = null;
     private List<Roi> bakedOverlayRois = null;
 
@@ -156,6 +157,7 @@ public class SegmentationController {
                     submit(()->rc.setFrame(getCurrentFrame()));
                 }
             });
+            model.addFrameListener(i -> syncBakeTargetForCurrentView());
         } catch(java.awt.AWTError err){
             System.out.println("error initializing awt: " + err.getMessage());
             System.out.println("This can be due to DISPLAY env being set incorrectly.");
@@ -2876,9 +2878,15 @@ public class SegmentationController {
         int frame = getCurrentFrame();
         int channel = getCurrentChannel();
         boolean[] outline = MeshBakeUtils.createOutlineMask(stack, mesh);
-        bakedOriginalData = Arrays.copyOf(stack.data, stack.data.length);
-        MeshBakeUtils.applyOutlineToStackData(stack, outline);
+        bakedTargetData = MeshBakeUtils.createBakeTargetField(stack, mesh, bakeShells);
+        stack.setBakeTargetData(bakedTargetData);
         applyBakeOverlay(stack, outline, frame, channel);
+        if(mesh.positions.length >= 3){
+            double[] pt = new double[]{mesh.positions[0], mesh.positions[1], mesh.positions[2]};
+            double before = stack.getInterpolatedBaseValue(pt);
+            double after = stack.getInterpolatedValue(pt);
+            IJ.log(String.format(Locale.US, "Bake debug at vertex: I_base=%.3f I_eff=%.3f", before, after));
+        }
         bakedTrack = selectedTrack;
         bakedFrame = frame;
         bakedChannel = channel;
@@ -2895,12 +2903,10 @@ public class SegmentationController {
         if(!bakeSelectedMeshEnabled){
             return;
         }
-        if(bakedOriginalData != null){
-            MeshImageStack stack = getMeshImageStack();
-            if(stack != null && stack.data.length == bakedOriginalData.length){
-                System.arraycopy(bakedOriginalData, 0, stack.data, 0, bakedOriginalData.length);
-                refreshCurrentFrameIfShowing(bakedFrame, bakedChannel);
-            }
+        MeshImageStack stack = getMeshImageStack();
+        if(stack != null){
+            stack.clearBakeTargetData();
+            refreshCurrentFrameIfShowing(bakedFrame, bakedChannel);
         }
         removeBakeOverlay();
         clearBakeSelectedMeshState();
@@ -2916,11 +2922,29 @@ public class SegmentationController {
 
     private void clearBakeSelectedMeshState(){
         removeBakeOverlay();
+        MeshImageStack stack = getMeshImageStack();
+        if(stack != null){
+            stack.clearBakeTargetData();
+        }
         bakeSelectedMeshEnabled = false;
         bakedTrack = null;
         bakedFrame = -1;
         bakedChannel = -1;
-        bakedOriginalData = null;
+        bakedTargetData = null;
+    }
+
+    private void syncBakeTargetForCurrentView(){
+        MeshImageStack stack = getMeshImageStack();
+        if(stack == null){
+            return;
+        }
+        if(bakeSelectedMeshEnabled && bakedTargetData != null
+                && bakedFrame == getCurrentFrame()
+                && bakedChannel == getCurrentChannel()){
+            stack.setBakeTargetData(bakedTargetData);
+        } else{
+            stack.clearBakeTargetData();
+        }
     }
 
     private void applyBakeOverlay(MeshImageStack stack, boolean[] outline, int frame, int channel){

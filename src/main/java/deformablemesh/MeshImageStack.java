@@ -109,6 +109,7 @@ public class MeshImageStack {
     protected int FRAMES;
     protected int SLICES;
     protected int CHANNELS;
+    protected double[] bakeTargetData;
 
     public double MIN_VALUE;
     public double MAX_VALUE;
@@ -444,7 +445,19 @@ public class MeshImageStack {
     }
 
     final static double min_interp_value=1e-4;
+    public double getInterpolatedBaseValue(double[] xyz){
+        return interpolateFromArray(data, xyz);
+    }
     public double getInterpolatedValue(double[] xyz){
+        double base = getInterpolatedBaseValue(xyz);
+        if(bakeTargetData == null){
+            return base;
+        }
+        double bake = interpolateFromArray(bakeTargetData, xyz);
+        return Math.max(base, bake);
+    }
+
+    private double interpolateFromArray(double[] volume, double[] xyz){
         double[] ndex = new double[3];
         int[] base = new int[3];
         double[] f = new double[3];
@@ -461,19 +474,19 @@ public class MeshImageStack {
             f[i] = base[i]==max_dex[i]?0:ndex[i] - base[i];
         }
 
-        double a = getValue(base[0],base[1], base[2]);
+        double a = getArrayValue(volume, base[0], base[1], base[2]);
 
         
         if(f[0]>min_interp_value){
-            double b = getValue(base[0]+1, base[1], base[2]);
+            double b = getArrayValue(volume, base[0]+1, base[1], base[2]);
             a = a + (b-a)*f[0];
         }
 
         if(f[1]>min_interp_value){
-            double c = getValue(base[0],base[1]+1, base[2]);
+            double c = getArrayValue(volume, base[0], base[1]+1, base[2]);
 
             if(f[0]>min_interp_value){
-                double d = getValue(base[0]+1, base[1]+1, base[2]);
+                double d = getArrayValue(volume, base[0]+1, base[1]+1, base[2]);
                 c = c + (d-c)*f[0];
             }
             a = a + (c-a)*f[1]; //first plane.
@@ -482,18 +495,18 @@ public class MeshImageStack {
         double v = a;
         if(f[2]>min_interp_value){
 
-            a = getValue(base[0],base[1], base[2]+1);
+            a = getArrayValue(volume, base[0], base[1], base[2]+1);
 
             if(f[0]>min_interp_value){
-                double b = getValue(base[0]+1, base[1], base[2]+1);
+                double b = getArrayValue(volume, base[0]+1, base[1], base[2]+1);
                 a = a + (b-a)*f[0];
             }
 
             if(f[1]>min_interp_value){
-                double c = getValue(base[0],base[1]+1, base[2]+1);
+                double c = getArrayValue(volume, base[0], base[1]+1, base[2]+1);
 
                 if(f[0]>min_interp_value){
-                    double d = getValue(base[0]+1, base[1]+1, base[2]+1);
+                    double d = getArrayValue(volume, base[0]+1, base[1]+1, base[2]+1);
                     c = c + (d-c)*f[0];
                 }
                 a = a + (c-a)*f[1];
@@ -503,6 +516,10 @@ public class MeshImageStack {
         }
 
         return v;
+    }
+
+    private double getArrayValue(double[] volume, int x, int y, int z){
+        return volume[x + y*dims[0] + z*dims[1]*dims[0]];
     }
 
     /**
@@ -1002,5 +1019,15 @@ public class MeshImageStack {
     public int getNChannels() {
         return CHANNELS;
     }
-}
 
+    public void setBakeTargetData(double[] bakeTargetData){
+        if(bakeTargetData != null && bakeTargetData.length != data.length){
+            throw new IllegalArgumentException("Bake target dimensions do not match stack dimensions.");
+        }
+        this.bakeTargetData = bakeTargetData;
+    }
+
+    public void clearBakeTargetData(){
+        bakeTargetData = null;
+    }
+}
