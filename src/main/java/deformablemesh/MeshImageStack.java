@@ -110,6 +110,12 @@ public class MeshImageStack {
     protected int SLICES;
     protected int CHANNELS;
     protected double[] bakeTargetData;
+    public static final int BAKE_MODE_NONE = 0;
+    public static final int BAKE_MODE_ATTRACT = 1;
+    public static final int BAKE_MODE_REPEL = 2;
+    protected int bakeMode = BAKE_MODE_NONE;
+    protected Object bakeSourceToken = null;
+    protected Object currentSamplingToken = null;
     protected double bakeBlend = 0.25;
     protected double bakeStrength = 0.5;
 
@@ -456,6 +462,13 @@ public class MeshImageStack {
             return base;
         }
         double target = interpolateFromArray(bakeTargetData, xyz);
+        if(bakeMode == BAKE_MODE_REPEL){
+            if(bakeSourceToken != null && bakeSourceToken == currentSamplingToken){
+                return base;
+            }
+            double eff = base - bakeStrength*target;
+            return clampToTypeRange(eff);
+        }
         if(target <= base){
             return base;
         }
@@ -1042,6 +1055,8 @@ public class MeshImageStack {
 
     public void clearBakeTargetData(){
         bakeTargetData = null;
+        bakeMode = BAKE_MODE_NONE;
+        bakeSourceToken = null;
     }
 
     public void setBakeBlend(double bakeBlend){
@@ -1058,6 +1073,18 @@ public class MeshImageStack {
 
     public double getBakeStrength(){
         return bakeStrength;
+    }
+
+    public void setBakeMode(int bakeMode, Object sourceToken){
+        if(bakeMode < BAKE_MODE_NONE || bakeMode > BAKE_MODE_REPEL){
+            bakeMode = BAKE_MODE_NONE;
+        }
+        this.bakeMode = bakeMode;
+        this.bakeSourceToken = sourceToken;
+    }
+
+    public void setCurrentSamplingToken(Object token){
+        currentSamplingToken = token;
     }
 
     private double clampUnitInterval(double v){

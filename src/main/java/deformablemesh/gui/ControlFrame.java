@@ -312,13 +312,15 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         buttonPanel.add( createButtonClearMesh(), bcon );
         bcon.gridx = 3;
         buttonPanel.add( createButtonBakeMesh(), bcon );
+        bcon.gridx = 4;
+        buttonPanel.add(createBakeModeSelector(), bcon);
         bcon.gridy = 1;
         bcon.gridx = 0;
-        bcon.gridwidth = 4;
+        bcon.gridwidth = 5;
         buttonPanel.add(createBakeSettingsPanel(), bcon);
         bcon.gridy = 2;
         bcon.gridx = 0;
-        bcon.gridwidth = 4;
+        bcon.gridwidth = 5;
         JPanel remButtonUnits = createRemeshPanel();
         buttonPanel.add( remButtonUnits, bcon);
         buttonPanel.setOpaque(true);
@@ -645,6 +647,27 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         });
         panel.add(strength, gbc);
         buttons.add(strength);
+        return panel;
+    }
+
+    private JPanel createBakeModeSelector(){
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.LINE_AXIS));
+        panel.setOpaque(false);
+        ButtonGroup group = new ButtonGroup();
+        JRadioButton attract = new JRadioButton("Attract");
+        JRadioButton repel = new JRadioButton("Repel");
+        attract.setOpaque(false);
+        repel.setOpaque(false);
+        attract.setSelected(true);
+        attract.addActionListener(e -> segmentationController.setBakeModeSelection(SegmentationController.BakeMode.ATTRACT));
+        repel.addActionListener(e -> segmentationController.setBakeModeSelection(SegmentationController.BakeMode.REPEL));
+        group.add(attract);
+        group.add(repel);
+        panel.add(attract);
+        panel.add(repel);
+        buttons.add(attract);
+        buttons.add(repel);
         return panel;
     }
 

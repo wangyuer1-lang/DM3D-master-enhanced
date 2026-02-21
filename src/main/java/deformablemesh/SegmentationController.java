@@ -121,6 +121,11 @@ import java.util.stream.Collectors;
  *
  */
 public class SegmentationController {
+    public enum BakeMode {
+        NONE,
+        ATTRACT,
+        REPEL
+    }
 
     final SegmentationModel model;
 
@@ -139,6 +144,8 @@ public class SegmentationController {
     private int bakedChannel = -1;
     private double[] bakedTargetData = null;
     private final int bakeShells = 6;
+    private BakeMode bakeModeSelection = BakeMode.ATTRACT;
+    private BakeMode bakedMode = BakeMode.NONE;
     private double bakeBlend = 0.25;
     private double bakeStrength = 0.5;
     private ImagePlus bakedOverlayPlus = null;
@@ -2024,9 +2031,20 @@ public class SegmentationController {
                 @Override
                 public void perform() {
                     main.submit(() -> {
-                        model.deformMeshes(meshes, steps);
-                        for(DeformableMesh3D mesh: meshes){
-                            newPositions.add(Arrays.copyOf(mesh.positions, mesh.positions.length));
+                        MeshImageStack stack = getMeshImageStack();
+                        try {
+                            for(DeformableMesh3D mesh: meshes){
+                                Track track = getAllTracks().stream().filter(t -> t.containsMesh(mesh)).findFirst().orElse(null);
+                                if(stack != null){
+                                    stack.setCurrentSamplingToken(track);
+                                }
+                                model.deformMesh(mesh, steps);
+                                newPositions.add(Arrays.copyOf(mesh.positions, mesh.positions.length));
+                            }
+                        } finally {
+                            if(stack != null){
+                                stack.setCurrentSamplingToken(null);
+                            }
                         }
                     });
 
@@ -2145,8 +2163,19 @@ public class SegmentationController {
             @Override
             public void perform() {
                 main.submit(() -> {
-                    model.deformMesh(steps);
-                    newPositions = Arrays.copyOf(mesh.positions, mesh.positions.length);
+                    MeshImageStack stack = getMeshImageStack();
+                    Track track = getAllTracks().stream().filter(t -> t.containsMesh(mesh)).findFirst().orElse(null);
+                    try{
+                        if(stack != null){
+                            stack.setCurrentSamplingToken(track);
+                        }
+                        model.deformMesh(steps);
+                        newPositions = Arrays.copyOf(mesh.positions, mesh.positions.length);
+                    } finally {
+                        if(stack != null){
+                            stack.setCurrentSamplingToken(null);
+                        }
+                    }
                 });
 
             }
@@ -2886,6 +2915,8 @@ public class SegmentationController {
         stack.setBakeBlend(bakeBlend);
         stack.setBakeStrength(bakeStrength);
         stack.setBakeTargetData(bakedTargetData);
+        bakedMode = bakeModeSelection;
+        stack.setBakeMode(toStackBakeMode(bakedMode), selectedTrack);
         applyBakeOverlay(stack, outline, frame, channel);
         if(mesh.positions.length >= 3){
             double[] pt = new double[]{mesh.positions[0], mesh.positions[1], mesh.positions[2]};
@@ -2931,12 +2962,14 @@ public class SegmentationController {
         MeshImageStack stack = getMeshImageStack();
         if(stack != null){
             stack.clearBakeTargetData();
+            stack.setCurrentSamplingToken(null);
         }
         bakeSelectedMeshEnabled = false;
         bakedTrack = null;
         bakedFrame = -1;
         bakedChannel = -1;
         bakedTargetData = null;
+        bakedMode = BakeMode.NONE;
     }
 
     private void syncBakeTargetForCurrentView(){
@@ -2950,8 +2983,21 @@ public class SegmentationController {
                 && bakedFrame == getCurrentFrame()
                 && bakedChannel == getCurrentChannel()){
             stack.setBakeTargetData(bakedTargetData);
+            stack.setBakeMode(toStackBakeMode(bakedMode), bakedTrack);
         } else{
             stack.clearBakeTargetData();
+        }
+    }
+
+    private int toStackBakeMode(BakeMode mode){
+        switch(mode){
+            case ATTRACT:
+                return MeshImageStack.BAKE_MODE_ATTRACT;
+            case REPEL:
+                return MeshImageStack.BAKE_MODE_REPEL;
+            case NONE:
+            default:
+                return MeshImageStack.BAKE_MODE_NONE;
         }
     }
 
@@ -3056,6 +3102,14 @@ public class SegmentationController {
 
     public boolean isTrackBaked(Track track){
         return bakeSelectedMeshEnabled && track != null && track == bakedTrack;
+    }
+
+    public void setBakeModeSelection(BakeMode mode){
+        bakeModeSelection = mode == null ? BakeMode.ATTRACT : mode;
+    }
+
+    public BakeMode getBakeModeSelection(){
+        return bakeModeSelection;
     }
 
     private void showBakedLockedMessage(){
