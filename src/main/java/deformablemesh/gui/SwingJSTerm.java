@@ -1,0 +1,837 @@
+/*-
+ * #%L
+ * Triangulated surface for deforming in 3D.
+ * %%
+ * Copyright (C) 2013 - 2023 University College London
+ * %%
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ * #L%
+ */
+package deformablemesh.gui;
+
+import deformablemesh.ETExecutor;
+import deformablemesh.SegmentationController;
+import ij.IJ;
+
+import javax.script.Bindings;
+import javax.script.ScriptContext;
+import javax.script.ScriptEngine;
+import javax.script.ScriptEngineManager;
+import javax.script.ScriptException;
+import javax.swing.AbstractAction;
+import javax.swing.Action;
+import javax.swing.ActionMap;
+import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
+import javax.swing.InputMap;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JList;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.KeyStroke;
+import javax.swing.ListModel;
+import javax.swing.Popup;
+import javax.swing.PopupFactory;
+import javax.swing.SwingUtilities;
+import javax.swing.border.BevelBorder;
+import javax.swing.border.Border;
+import javax.swing.event.ListDataListener;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.Caret;
+import javax.swing.text.Document;
+import javax.swing.text.Utilities;
+import java.awt.BorderLayout;
+import java.awt.EventQueue;
+import java.awt.Point;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.io.Reader;
+import java.io.Writer;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.Parameter;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+/**
+ * Created by msmith on 4/14/14.
+ */
+public class SwingJSTerm {
+
+    final ScriptEngine engine;
+    JTextArea display, input;
+    List<String> commandHistory = new ArrayList<>();
+    List<ReadyObserver> observers = new ArrayList<>();
+    JFrame frame;
+    SegmentationController segmentationController;
+    int commandIndex;
+    String[] historyTemp = new String[1];
+    JButton previous;
+    JButton next;
+    JTextField scriptFile;
+    JButton runScriptFile;
+    ETExecutor executor;
+    public SwingJSTerm(){
+        ScriptEngineManager manager = new ScriptEngineManager();
+        engine = manager.getEngineByName("nashorn");
+        Bindings bindings = engine.createBindings();
+        engine.setBindings(bindings, ScriptContext.ENGINE_SCOPE);
+        engine.put("terminal", this);
+        executor = exe -> {
+            try{
+                exe.execute();
+            } catch( Exception e){
+                throw new RuntimeException(e);
+            }
+        };
+    }
+    public SwingJSTerm(SegmentationController controls){
+        this();
+        this.segmentationController = controls;
+        engine.put("controls", controls);
+        try {
+            addClasses();
+        } catch (Exception e) {
+            //do without.
+            e.printStackTrace();
+        }
+        executor = controls::submit;
+    }
+
+    /**
+     * This is the executor that the javascript will be evaluated
+     * by the engine on. The default causes javascript to be evaluated
+     * on the calling thread.
+     *
+     * If a controller is provided during construction, then the controller
+     * will be the default executor.
+     *
+     * @param e evaluates the javascript.
+     */
+    public void setExecutor(ETExecutor e){
+        executor = e;
+    }
+
+    public void addToScriptEngine(String name, Object obj){
+        engine.put(name, obj);
+    }
+
+    private PrintWriter getDisplayWriter(){
+        PrintWriter writer = new PrintWriter(new Writer() {
+            StringBuilder builder = new StringBuilder();
+
+            @Override
+            public void write(char[] cbuf, int off, int len) throws IOException {
+                for (int i = off; i < off + len; i++) {
+                    builder.append(cbuf[i]);
+                }
+            }
+
+            @Override
+            public void flush() throws IOException {
+                echo(builder);
+                builder = new StringBuilder();
+            }
+
+            @Override
+            public void close() throws IOException {
+                echo(builder);
+            }
+        });
+        return writer;
+    }
+    private void runScriptFile(Path path){
+        try (BufferedReader reader = Files.newBufferedReader(path)) {
+            engine.eval(reader);
+        } catch (IOException e) {
+            echo("Error reading file!");
+            PrintWriter writer = getDisplayWriter();
+            e.printStackTrace(writer);
+            writer.close();
+        } catch (ScriptException e) {
+            echo("Error running script!");
+            PrintWriter writer = getDisplayWriter();
+            e.printStackTrace(writer);
+            writer.close();
+        }
+    }
+    public void runFile(Path path){
+        executor.submit( () -> runScriptFile(path));
+    }
+
+    public void displayText(String text){
+        display.append(text);
+        display.setCaretPosition(display.getDocument().getLength());
+    }
+
+
+
+    public void addClasses() throws ScriptException {
+
+        BufferedReader reader = new BufferedReader(
+                new InputStreamReader(
+                        getClass().getResourceAsStream("/load-bindings.js"), StandardCharsets.UTF_8
+                )
+        );
+        engine.eval(reader);
+
+    }
+
+    JPanel buildUI(){
+        previous = new JButton("previous");
+        next = new JButton("next");
+        scriptFile = new JTextField(65);
+        runScriptFile = new JButton("run file");
+        runScriptFile.addActionListener(evt->{
+
+            Path p = null;
+            if(scriptFile.getText().length() != 0) {
+                p = Paths.get(scriptFile.getText());
+                if( !Files.exists(p)){
+                    p = null;
+                }
+            }
+            if(p == null){
+                String s = IJ.getFilePath("select script to run");
+                p = Paths.get(s).toAbsolutePath();
+                scriptFile.setText(p.toString());
+            }
+            if(p != null){
+                runFile(p);
+            }
+        });
+        JSplitPane root = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+
+        display = new JTextArea("**shift+enter will execute command immediately.**\n");
+        display.setEditable(false);
+        display.setCaretPosition(display.getDocument().getLength());
+
+        display.setBorder(BorderFactory.createCompoundBorder(
+                display.getBorder(),
+                BorderFactory.createEmptyBorder(15, 15, 15, 15)));
+
+        JScrollPane display_pane = new JScrollPane(display);
+        root.add(display_pane, JSplitPane.TOP);
+
+
+
+        TextBoxSelections tbs = new TextBoxSelections(engine);
+        input = tbs.input;
+        input.setRows(10);
+
+        KeyStroke ks = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, KeyEvent.SHIFT_MASK);
+
+        input.getInputMap().put(ks, "Submit");
+        input.getActionMap().put("Submit", new AbstractAction(){
+            @Override
+            public void actionPerformed(ActionEvent evt){
+                submit();
+            }
+        });
+
+        JScrollPane house = new JScrollPane(input);
+
+        previous.addActionListener((evt)->{
+            commandIndex++;
+            //index we will be at.
+            int eIndex = commandHistory.size() - commandIndex;
+            if(eIndex>=0 && eIndex<commandHistory.size()){
+                //valid history.
+                if(commandIndex==1){
+                    //removing user entered data.
+                    historyTemp[0] = input.getText();
+                }
+                input.setText(commandHistory.get(eIndex));
+                next.setEnabled(true);
+                if(commandIndex>=commandHistory.size()){
+                    previous.setEnabled(false);
+                }
+
+            }
+
+
+        });
+        previous.setEnabled(false);
+
+        next.addActionListener((evt)->{
+            //requesting index.
+            commandIndex--;
+            int eIndex = commandHistory.size() - commandIndex;
+            if(eIndex>=0 && eIndex<commandHistory.size()){
+                //valid history.
+                input.setText(commandHistory.get(eIndex));
+                previous.setEnabled(true);
+            } else if(eIndex>=commandHistory.size()){
+                commandIndex = 0;
+                next.setEnabled(false);
+                input.setText(historyTemp[0]);
+                previous.setEnabled(true);
+            }
+        });
+
+        next.setEnabled(false);
+
+        JButton eval = new JButton("eval");
+        eval.addActionListener((event) -> {
+            if((event.getModifiers() & ActionEvent.CTRL_MASK) != 0){
+                shortCircuit();
+            }
+            submit();
+        });
+
+        JPanel buttons = new JPanel();
+        buttons.setLayout(new BoxLayout(buttons, BoxLayout.LINE_AXIS));
+        buttons.add(eval);
+        buttons.add(previous);
+        buttons.add(next);
+        buttons.add(scriptFile);
+        buttons.add(runScriptFile);
+        root.add(house, JSplitPane.BOTTOM);
+        Border b = BorderFactory.createCompoundBorder(
+            BorderFactory.createBevelBorder(BevelBorder.RAISED),
+            BorderFactory.createEmptyBorder(5, 5, 5, 5)
+        );
+        root.setBorder(b);
+        frame = new JFrame();
+        JPanel content = new JPanel(new BorderLayout());
+        content.add(root, BorderLayout.CENTER);
+        content.add(buttons, BorderLayout.SOUTH);
+
+        frame.setContentPane(content);
+        if(engine.getContext().getAttribute("importer") != null) {
+            frame.setJMenuBar(buildBar());
+        }
+        frame.pack();
+        frame.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
+
+        return content;
+    }
+
+    JMenuBar buildBar(){
+        JMenuBar bar = new JMenuBar();
+        JMenu scripts = new JMenu("tools");
+        bar.add(scripts);
+
+        String[] tools = {
+            "meshing-tools.js",
+            "tracking-tools.js",
+            "visualization-tools.js"
+        };
+        for( String tool : tools){
+            URL url = getClass().getResource("/javascript/" + tool);
+            if(url != null){
+                JMenuItem item = new JMenuItem(tool.replace("-tools.js", ""));
+                scripts.add(item);
+                item.addActionListener(evt->{
+                    executor.submit( ()->{
+                        try(InputStream is = url.openStream()){
+                            engine.eval(new InputStreamReader(is));
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+                });
+            }
+        }
+
+        String[] examples = {
+                "filter-snippet.js",
+                "plotting-snippet.js",
+                "coloring-snippet.js",
+                "mesh_folder-snippet.js"
+        };
+
+        JMenu snippets = new JMenu("examples");
+        bar.add(snippets);
+
+
+        for( String snippet : examples){
+            URL url = getClass().getResource("/javascript/" + snippet);
+            if(url != null){
+                JMenuItem item = new JMenuItem(snippet.replace("-snippet.js", ""));
+                snippets.add(item);
+                item.addActionListener(evt->{
+                        try(BufferedReader reader = new BufferedReader(new InputStreamReader(url.openStream()))){
+                            String line = reader.readLine();
+                            input.append(line);
+                            while( (line = reader.readLine()) != null ) {
+                                input.append("\n");
+                                input.append(line);
+                            }
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                });
+            };
+        }
+
+
+
+        return bar;
+    }
+    public void clearDisplay(){
+
+        Document d = display.getDocument();
+        try {
+            d.remove(0, d.getLength());
+        } catch (BadLocationException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+    public void echo(Object o){
+        String echoed;
+        if(o == null){
+            echoed = "null";
+        }else if(o.getClass().isArray()){
+            if(o instanceof double[]){
+                echoed = Arrays.toString((double[])o);
+            } else if(o instanceof int[]){
+                echoed = Arrays.toString((int[])o);
+            } else if(o instanceof byte[]){
+                echoed = Arrays.toString((byte[])o);
+            } else if(o instanceof long[]){
+                echoed = Arrays.toString((long[])o);
+            } else if(o instanceof short[]){
+                echoed = Arrays.toString((short[])o);
+            }else if(o instanceof Object[]){
+                echoed = Arrays.toString((Object[])o);
+            } else{
+                echoed = o.toString();
+            }
+        }else{
+            echoed = o.toString();
+        }
+        EventQueue.invokeLater(()->{
+            displayText(echoed + "\n");
+        });
+    }
+
+    public void submit(){
+        String s = input.getText();
+        if(s.length() == 0){
+            return;
+        }
+        input.setText("");
+        historyTemp[0] = "";
+        commandHistory.add(s);
+        commandIndex = 0;
+        next.setEnabled(false);
+        previous.setEnabled(true);
+
+        evaluateExpression(s);
+    }
+
+    public void showTerminal(){
+        if(frame==null){
+            buildUI();
+        }
+        frame.setVisible(true);
+    }
+
+    public void evaluateHeadless(String s){
+        try{
+            engine.eval(s);
+        } catch (ScriptException e) {
+            e.printStackTrace();
+        }
+    }
+    private void shortCircuit(){
+        System.out.println("short circuit!");
+        String s = input.getText();
+        try{
+            engine.eval(s);
+        } catch (ScriptException e) {
+            StackTraceElement[] elements = e.getStackTrace();
+            displayText(e.getMessage() + '\n');
+            if(elements.length>0){
+                displayText(elements[0].toString() + '\n');
+            }
+        }
+    }
+
+    private void evaluateExpression(String s){
+        String[] lines = s.split("\n");
+
+        EventQueue.invokeLater(()->{
+            for(String line: lines){
+                displayText(line + '\n');
+            }
+        });
+
+            executor.submit(()->{
+                observers.forEach(o->o.setReady(false));
+                try{
+                    engine.eval(s);
+                } catch (ScriptException e) {
+                    EventQueue.invokeLater(()->{
+                        StackTraceElement[] elements = e.getStackTrace();
+                        displayText(e.getMessage() + '\n');
+                        if(elements.length>0){
+                            displayText(elements[0].toString() + '\n');
+                        }
+                    });
+                } finally{
+                    observers.forEach(o->o.setReady(true));
+                }
+
+            });
+
+    }
+
+    public static void main(String[] args){
+        SwingJSTerm term = new SwingJSTerm();
+        term.showTerminal();
+        term.frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    }
+
+    public void addReadyObserver(ReadyObserver observer) {
+        observers.add(observer);
+    }
+}
+
+
+class TextBoxSelections{
+    //either jdk. or jdk.internal.
+    final static String staticClassName = "dynalink.beans.StaticClass";
+
+    Popup lastPopUp;
+    JScrollPane view;
+    JList<String> listView;
+    JTextArea input;
+    ScriptEngine engine;
+    TextBoxSelections(ScriptEngine engine){
+        input = new JTextArea();
+        input.addCaretListener(evt->{
+            hidePopUp();
+        });
+        this.engine = engine;
+        InputMap im = input.getInputMap();
+        ActionMap actions = input.getActionMap();
+        KeyStroke tab = KeyStroke.getKeyStroke("TAB");
+        Caret caret = input.getCaret();
+        KeyStroke up = KeyStroke.getKeyStroke("UP");
+        KeyStroke down = KeyStroke.getKeyStroke("DOWN");
+        KeyStroke enter = KeyStroke.getKeyStroke("ENTER");
+        KeyStroke escape = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
+        im.put(escape, "escape");
+
+        actions.put(im.get(escape), new AbstractAction(){
+
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if(lastPopUp!=null) {
+                    hidePopUp();
+                }
+            }
+        });
+        Action oldEnter = actions.get(im.get(enter));
+
+        input.getActionMap().put(im.get(enter), new AbstractAction(){
+
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if(lastPopUp!=null) {
+                    if(listView.getSelectedValue()==null){
+                        listView.setSelectedIndex(0);
+                    }
+                    insertSuggestion();                }
+                else{
+                    oldEnter.actionPerformed(e);
+                }
+            }
+        });
+
+        Action oldUp = actions.get(im.get(up));
+        Action oldDown = actions.get(im.get(down));
+
+
+        input.getActionMap().put(im.get(up), new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if(lastPopUp!=null) {
+                    int i = listView.getSelectedIndex();
+                    if(i>0){
+                        listView.setSelectedIndex(i-1);
+                    }
+                }
+                else{
+                    oldUp.actionPerformed(e);
+                }
+            }
+        });
+        input.getActionMap().put(im.get(down), new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if(lastPopUp!=null) {
+                    int i = listView.getSelectedIndex();
+                    if(i<listView.getModel().getSize()){
+                        listView.setSelectedIndex(i+1);
+                    }
+                } else{
+                    oldDown.actionPerformed(e);
+                }
+            }
+        });
+
+        input.getActionMap().put(im.get(tab), new AbstractAction() {
+
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if(lastPopUp!=null){
+                    //a second tab is assumed to mean take the presented option.
+                    if(listView.getSelectedValue()==null){
+                        listView.setSelectedIndex(0);
+                    }
+                    insertSuggestion();
+                    return;
+                }
+
+                Document doc = input.getDocument();
+                int loc = caret.getMark();
+                int len = doc.getLength();
+
+                try {
+                    int end = Utilities.getWordEnd(input, loc);
+                    int starting = Utilities.getWordStart(input, loc);
+                    int l = loc - starting;
+                    if(l==0){
+                        if(len - loc != 0){
+
+                            end = Utilities.getWordEnd(input, loc - 1);
+                            starting = Utilities.getWordStart(input, loc - 1);
+                            if(end==loc){
+                                l = loc - starting;
+                            }
+                        } else{
+                            return;
+                        }
+                    }
+                    String partial = input.getText(starting, l);
+                    List<String> suggestions;
+                    if(!partial.contains(".")){
+                        suggestions = getTopSuggestions(partial);
+                    } else{
+                        if(partial.equals(".")){
+                            starting = Utilities.getWordStart(input, loc-2);
+                            partial = input.getText(starting, loc - starting);
+                        }
+                        suggestions = getSuggestions(partial);
+                    }
+
+                    if(suggestions.size()>0){
+                        JList<String> list = new JList<>(new ListModel<String>(){
+
+                            @Override
+                            public int getSize() {
+                                return suggestions.size();
+                            }
+
+                            @Override
+                            public String getElementAt(int index) {
+                                return suggestions.get(index);
+                            }
+
+                            @Override
+                            public void addListDataListener(ListDataListener l) {
+                            }
+
+                            @Override
+                            public void removeListDataListener(ListDataListener l) {
+
+                            }
+                        });
+
+
+                        list.setFocusable(false);
+
+                        Point pt = caret.getMagicCaretPosition();
+
+                        Point pt2 = new Point(pt);
+                        SwingUtilities.convertPointToScreen(pt2, input);
+
+                        view = new JScrollPane();
+                        view.setViewportView(list);
+
+                        Popup pop = PopupFactory.getSharedInstance().getPopup(input, view, pt2.x, pt2.y);
+                        pop.show();
+
+
+                        listView = list;
+                        lastPopUp = pop;
+
+
+                    }
+
+                } catch (BadLocationException e1) {
+                    e1.printStackTrace();
+                }
+
+
+            }
+        });
+    }
+    List<String> getTopSuggestions(String partial){
+        final int l = partial.length();
+        if(l>0){
+            return engine.getBindings(ScriptContext.ENGINE_SCOPE).keySet().stream().filter(
+                    s->s.startsWith(partial)
+            ).map(
+                    s->s.substring(l)
+            ).collect(Collectors.toList());
+
+        }
+        return engine.getBindings(ScriptContext.ENGINE_SCOPE).keySet().stream().collect(Collectors.toList());
+
+    }
+    List<String> getSuggestions(String partial){
+        Bindings bindings = engine.getBindings(ScriptContext.ENGINE_SCOPE);
+        List<String> suggestions = new ArrayList<>();
+
+        String[] orders = partial.split(Pattern.quote("."));
+
+        Object obj = bindings.get(orders[0]);
+
+        if(obj!=null){
+            List<String> fields = getAvailableFields(obj);
+            List<String> methods = getAvailableMethodNames(obj);
+
+            final String filter;
+            if(orders.length==1){
+                filter = "";
+            } else {
+                filter = orders[1];
+            }
+            if(filter.length()>0){
+                //apply a filter.
+                fields.stream().filter(
+                        s->s.startsWith(filter)
+                ).forEach(
+                        s->suggestions.add(s.substring(filter.length()))
+                );
+                methods.stream().filter(
+                        s->s.startsWith(filter)
+                ).forEach(
+                        s->suggestions.add(s.substring(filter.length()))
+                );
+            } else{
+                //apply a filter.
+                fields.forEach(
+                        suggestions::add
+                );
+                methods.forEach(
+                        suggestions::add
+                );
+            }
+        }
+
+        return suggestions;
+    }
+    void insertSuggestion(){
+        String rep = listView.getSelectedValue();
+        if(rep!=null) {
+            String safer = rep.replaceAll("\\(.*\\)", "(");
+            Caret caret = input.getCaret();
+            Document doc = input.getDocument();
+            int loc = caret.getMark();
+
+            input.replaceRange(safer, loc, loc);
+
+        }
+        hidePopUp();
+    }
+    List<String> getAvailableFields( Object obj){
+        Class<?> c = obj.getClass();
+        if(c.getName().endsWith(staticClassName)){
+            try{
+                Method m = c.getMethod("getRepresentedClass");
+                c = (Class<?>)m.invoke(obj);
+                return Arrays.stream(c.getFields()).filter(
+                        field->Modifier.isStatic(field.getModifiers())
+                    ).map(Field::getName).collect(Collectors.toList());
+            } catch(Exception e){
+                //silently fail.
+                //just display the obj.getClass variables.
+            }
+        }
+        return Arrays.stream(c.getFields()).filter(
+                field->!Modifier.isStatic(field.getModifiers())
+            ).map(Field::getName).collect(Collectors.toList());
+    }
+    String getMethodString(Method m){
+        return m.getName() + getParameterString(m);
+    }
+    String getParameterString( Method m){
+        Parameter[] parameters = m.getParameters();
+        StringBuilder build = new StringBuilder("(");
+        String pre = "";
+        for(Parameter p : parameters){
+            build.append(pre);
+            String t = p.getParameterizedType().getTypeName().replaceAll("[^<]*\\.", "");
+            build.append(t);
+            pre = ", ";
+        }
+        build.append(")");
+        return build.toString();
+    }
+    List<String> getAvailableMethodNames(Object obj){
+        Class<?> c;
+        c = obj.getClass();
+        //for finding static methods.
+        if(c.getName().contains(staticClassName)){
+            try{
+                Method m = c.getMethod("getRepresentedClass");
+                c = (Class<?>)m.invoke(obj);
+                return Arrays.stream(c.getMethods()).filter(meth->Modifier.isStatic(meth.getModifiers())).map(this::getMethodString).collect(Collectors.toList());
+            } catch(Exception e){
+                //just display the obj.getClass variables.
+            }
+        }
+        //don't show static methods since they won't work.
+        return Arrays.stream(c.getMethods()).filter(meth->!Modifier.isStatic(meth.getModifiers())).map(this::getMethodString).collect(Collectors.toList());
+    }
+    void hidePopUp(){
+        if(lastPopUp!=null){
+            lastPopUp.hide();
+            lastPopUp=null;
+            input.requestFocus();
+        }
+    }
+}

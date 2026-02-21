@@ -1,0 +1,83 @@
+package deformablemesh.plugins;/*-
+ * #%L
+ * Triangulated surface for deforming in 3D.
+ * %%
+ * Copyright (C) 2013 - 2023 University College London
+ * %%
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ * #L%
+ */
+import deformablemesh.SegmentationController;
+import deformablemesh.SegmentationModel;
+import deformablemesh.gui.ControlFrame;
+import deformablemesh.gui.PropertySaver;
+import ij.ImageJ;
+import ij.ImagePlus;
+import ij.plugin.PlugIn;
+
+import java.awt.EventQueue;
+import java.io.File;
+
+public class DeformingMeshSans3D implements PlugIn {
+
+    public static SegmentationController createDeformingMeshApplication(){
+        SegmentationModel model = new SegmentationModel();
+        SegmentationController control = new SegmentationController(model);
+
+        try{
+            PropertySaver.loadProperties(control);
+        } catch(Exception e){
+            System.err.println("cannot load properties: " + e.getMessage());
+        }
+
+        ControlFrame controller = new ControlFrame(control);
+
+        controller.showFrame();
+        controller.shutdownControllerOnClose();
+        return control;
+    }
+
+
+
+
+    private static void startApplication(File input){
+        ImageJ.main(new String[]{});
+
+        SegmentationController controls = createDeformingMeshApplication();
+
+        if(input!=null) {
+            String o = input.getAbsolutePath();
+            controls.setOriginalPlus(new ImagePlus(o));
+        }
+    }
+    public static void main(String[] args){
+        File input;
+        if(args.length>0){
+            input = new File(args[0]);
+        } else{
+            input = null;
+        }
+        EventQueue.invokeLater(()->startApplication( input ));
+    }
+
+    @Override
+    public void run(String s) {
+        startApplication(null);
+    }
+}
