@@ -67,9 +67,11 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JRadioButton;
 import javax.swing.JScrollPane;
+import javax.swing.JSpinner;
 import javax.swing.JTabbedPane;
 import javax.swing.JTextField;
 import javax.swing.KeyStroke;
+import javax.swing.SpinnerNumberModel;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -311,6 +313,10 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         bcon.gridx = 3;
         buttonPanel.add( createButtonBakeMesh(), bcon );
         bcon.gridy = 1;
+        bcon.gridx = 0;
+        bcon.gridwidth = 4;
+        buttonPanel.add(createBakeSettingsPanel(), bcon);
+        bcon.gridy = 2;
         bcon.gridx = 0;
         bcon.gridwidth = 4;
         JPanel remButtonUnits = createRemeshPanel();
@@ -609,6 +615,37 @@ public class ControlFrame implements ReadyObserver, FrameListener {
             segmentationController.setBakeSelectedMeshEnabled(enableBake);
         });
         return bakeMeshButton;
+    }
+
+    private JPanel createBakeSettingsPanel(){
+        JPanel panel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        panel.add(new JLabel("blend"), gbc);
+        gbc.gridx = 1;
+        JSpinner blend = new JSpinner(
+                new SpinnerNumberModel(segmentationController.getBakeBlend(), 0.0, 1.0, 0.05)
+        );
+        blend.addChangeListener(e -> {
+            double v = ((Number)blend.getValue()).doubleValue();
+            segmentationController.setBakeBlend(v);
+        });
+        panel.add(blend, gbc);
+        buttons.add(blend);
+
+        gbc.gridx = 2;
+        panel.add(new JLabel("strength"), gbc);
+        gbc.gridx = 3;
+        JSpinner strength = new JSpinner(
+                new SpinnerNumberModel(segmentationController.getBakeStrength(), 0.0, 1.0, 0.05)
+        );
+        strength.addChangeListener(e -> {
+            double v = ((Number)strength.getValue()).doubleValue();
+            segmentationController.setBakeStrength(v);
+        });
+        panel.add(strength, gbc);
+        buttons.add(strength);
+        return panel;
     }
 
     public JButton createButtonPrevious(){

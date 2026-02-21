@@ -139,6 +139,8 @@ public class SegmentationController {
     private int bakedChannel = -1;
     private double[] bakedTargetData = null;
     private final int bakeShells = 6;
+    private double bakeBlend = 0.25;
+    private double bakeStrength = 0.5;
     private ImagePlus bakedOverlayPlus = null;
     private List<Roi> bakedOverlayRois = null;
 
@@ -2845,6 +2847,8 @@ public class SegmentationController {
 
     public void setMeshImageStack(MeshImageStack image){
         clearBakeSelectedMeshState();
+        image.setBakeBlend(bakeBlend);
+        image.setBakeStrength(bakeStrength);
         model.setMeshImageStack(image);
 
     }
@@ -2879,6 +2883,8 @@ public class SegmentationController {
         int channel = getCurrentChannel();
         boolean[] outline = MeshBakeUtils.createOutlineMask(stack, mesh);
         bakedTargetData = MeshBakeUtils.createBakeTargetField(stack, mesh, bakeShells);
+        stack.setBakeBlend(bakeBlend);
+        stack.setBakeStrength(bakeStrength);
         stack.setBakeTargetData(bakedTargetData);
         applyBakeOverlay(stack, outline, frame, channel);
         if(mesh.positions.length >= 3){
@@ -2938,6 +2944,8 @@ public class SegmentationController {
         if(stack == null){
             return;
         }
+        stack.setBakeBlend(bakeBlend);
+        stack.setBakeStrength(bakeStrength);
         if(bakeSelectedMeshEnabled && bakedTargetData != null
                 && bakedFrame == getCurrentFrame()
                 && bakedChannel == getCurrentChannel()){
@@ -2945,6 +2953,42 @@ public class SegmentationController {
         } else{
             stack.clearBakeTargetData();
         }
+    }
+
+    public void setBakeBlend(double bakeBlend){
+        if(bakeBlend < 0){
+            bakeBlend = 0;
+        } else if(bakeBlend > 1){
+            bakeBlend = 1;
+        }
+        this.bakeBlend = bakeBlend;
+        MeshImageStack stack = getMeshImageStack();
+        if(stack != null){
+            stack.setBakeBlend(bakeBlend);
+            model.refreshCurrentFrame();
+        }
+    }
+
+    public double getBakeBlend(){
+        return bakeBlend;
+    }
+
+    public void setBakeStrength(double bakeStrength){
+        if(bakeStrength < 0){
+            bakeStrength = 0;
+        } else if(bakeStrength > 1){
+            bakeStrength = 1;
+        }
+        this.bakeStrength = bakeStrength;
+        MeshImageStack stack = getMeshImageStack();
+        if(stack != null){
+            stack.setBakeStrength(bakeStrength);
+            model.refreshCurrentFrame();
+        }
+    }
+
+    public double getBakeStrength(){
+        return bakeStrength;
     }
 
     private void applyBakeOverlay(MeshImageStack stack, boolean[] outline, int frame, int channel){
