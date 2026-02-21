@@ -58,23 +58,51 @@ public class MeshBakeUtils {
         int slices = stack.getNSlices();
         int channels = stack.getNChannels();
         int sliceSize = width * height;
-        float add = (float)alpha;
         ImageStack imageStack = stack.getOriginalPlus().getStack();
 
         for(int z = 0; z < slices; z++){
             int stackIndex = z * channels + frame * channels * slices + channel + 1;
             ImageProcessor proc = imageStack.getProcessor(stackIndex);
+            float bakeValue = getBakeValue(proc, stack.getType());
             int offset = z * sliceSize;
             for(int y = 0; y < height; y++){
                 int row = offset + y * width;
                 for(int x = 0; x < width; x++){
                     if(outline[row + x]){
-                        proc.setf(x, y, proc.getf(x, y) + add);
+                        proc.setf(x, y, bakeValue);
                     }
                 }
             }
         }
         stack.copyValues();
+    }
+
+    private static float getBakeValue(ImageProcessor proc, int type){
+        switch(type){
+            case MeshImageStack.INT8:
+                return 255f;
+            case MeshImageStack.INT16:
+                return 65535f;
+            case MeshImageStack.FLOAT32:
+                return Math.max(1_000_000f, getSliceMax(proc));
+            default:
+                return Math.max(255f, getSliceMax(proc));
+        }
+    }
+
+    private static float getSliceMax(ImageProcessor proc){
+        int width = proc.getWidth();
+        int height = proc.getHeight();
+        float max = -Float.MAX_VALUE;
+        for(int y = 0; y < height; y++){
+            for(int x = 0; x < width; x++){
+                float value = proc.getf(x, y);
+                if(value > max){
+                    max = value;
+                }
+            }
+        }
+        return max;
     }
 
     private static boolean[] createOutlineMask(ImagePlus mask){

@@ -131,6 +131,7 @@ public class SegmentationController {
 
     private ExecutorService globalExecutor;
     private boolean bakeSelectedMeshEnabled = false;
+    private Track bakedTrack = null;
     private int bakedFrame = -1;
     private int bakedChannel = -1;
     private List<Object> bakedOriginalPixels = null;
@@ -529,6 +530,11 @@ public class SegmentationController {
     public void reMesh() {
         main.submit(()->{
             int f = model.getCurrentFrame();
+            Track selectedTrack = model.getSelectedTrack();
+            if(isTrackBaked(selectedTrack)){
+                showBakedLockedMessage();
+                return;
+            }
             InterceptingMesh3D intercepts = new InterceptingMesh3D(model.getSelectedMesh(f));
             DeformableMesh3D newMesh = RayCastMesh.rayCastMesh(intercepts, intercepts.getCenter(), getDivisions());
             addMesh(f, newMesh);
@@ -587,6 +593,10 @@ public class SegmentationController {
     public void reMeshConnections(Track track, int frame, double minConnectionLength, double maxConnectionLength){
         if(minConnectionLength > maxConnectionLength){
             System.out.println("Minimum connection length should be less than max connection length");
+            return;
+        }
+        if(isTrackBaked(track)){
+            showBakedLockedMessage();
             return;
         }
         if(!track.containsKey(frame)){
@@ -675,6 +685,10 @@ public class SegmentationController {
      * @param mesh the mesh that will be part of the track.
      */
     public void setMesh(Track track, int frame, DeformableMesh3D mesh){
+        if(isTrackBaked(track)){
+            showBakedLockedMessage();
+            return;
+        }
 
         actionStack.postAction(new UndoableActions(){
 
@@ -1986,7 +2000,7 @@ public class SegmentationController {
 
         Integer frame = model.getCurrentFrame();
         for(Track t: tracks){
-            if(t.containsKey(frame)){
+            if(t.containsKey(frame) && !isTrackBaked(t)){
                 meshes.add(t.getMesh(frame));
             }
         }
@@ -2044,6 +2058,9 @@ public class SegmentationController {
      * @param steps
      */
     public void deformAllMeshes(int steps){
+        if(isSelectedTrackBaked()){
+            showBakedLockedMessage();
+        }
 
         List<Track> tracks = model.getAllTracks();
         deformMeshes(steps, tracks);
@@ -2108,6 +2125,10 @@ public class SegmentationController {
      * @param steps number of times the mesh will be updated, the connectivity does not change.
      */
     public void deformMesh(final DeformableMesh3D mesh, int steps){
+        if(isMeshBaked(mesh)){
+            showBakedLockedMessage();
+            return;
+        }
         actionStack.postAction(new UndoableActions(){
 
             final double[] positions = Arrays.copyOf(mesh.positions, mesh.positions.length);
@@ -2149,6 +2170,10 @@ public class SegmentationController {
      */
     public void deformMesh(final int count){
         if(getSelectedMesh() == null){
+            return;
+        }
+        if(isSelectedTrackBaked()){
+            showBakedLockedMessage();
             return;
         }
         deformMesh(getSelectedMesh(), count);
@@ -2828,8 +2853,15 @@ public class SegmentationController {
     }
 
     private void enableBakeSelectedMesh(){
-        if(bakeSelectedMeshEnabled){
+        Track selectedTrack = getSelectedMeshTrack();
+        if(selectedTrack == null){
             return;
+        }
+        if(bakeSelectedMeshEnabled && selectedTrack == bakedTrack){
+            return;
+        }
+        if(bakeSelectedMeshEnabled){
+            disableBakeSelectedMesh();
         }
         MeshImageStack stack = getMeshImageStack();
         DeformableMesh3D mesh = getSelectedMesh();
@@ -2841,10 +2873,15 @@ public class SegmentationController {
         List<Object> original = MeshBakeUtils.copyFramePixels(stack, frame, channel);
         MeshBakeUtils.bakeSelectedMeshOutline(stack, mesh, frame, channel, 50.0);
         bakedOriginalPixels = original;
+        bakedTrack = selectedTrack;
         bakedFrame = frame;
         bakedChannel = channel;
         bakeSelectedMeshEnabled = true;
         refreshCurrentFrameIfShowing(frame, channel);
+        FurrowController ringController = getRingController();
+        if(ringController != null){
+            ringController.cancel();
+        }
     }
 
     private void disableBakeSelectedMesh(){
@@ -2867,9 +2904,31 @@ public class SegmentationController {
 
     private void clearBakeSelectedMeshState(){
         bakeSelectedMeshEnabled = false;
+        bakedTrack = null;
         bakedFrame = -1;
         bakedChannel = -1;
         bakedOriginalPixels = null;
+    }
+
+    public boolean isBakeSelectedMeshEnabled(){
+        return bakeSelectedMeshEnabled;
+    }
+
+    public boolean isSelectedTrackBaked(){
+        return isTrackBaked(getSelectedMeshTrack());
+    }
+
+    public boolean isMeshBaked(DeformableMesh3D mesh){
+        Track track = getAllTracks().stream().filter(t -> t.containsMesh(mesh)).findFirst().orElse(null);
+        return isTrackBaked(track);
+    }
+
+    public boolean isTrackBaked(Track track){
+        return bakeSelectedMeshEnabled && track != null && track == bakedTrack;
+    }
+
+    private void showBakedLockedMessage(){
+        IJ.error("Mesh is baked/locked. Unbake to deform.");
     }
 
 
@@ -3644,11 +3703,19 @@ public class SegmentationController {
     }
 
     public void startModifierTranslate(){
+        if(isSelectedTrackBaked()){
+            showBakedLockedMessage();
+            return;
+        }
         FurrowController rc = getRingController();
         rc.translateClicked();
     }
 
     public void startModifierSculpt(){
+        if(isSelectedTrackBaked()){
+            showBakedLockedMessage();
+            return;
+        }
         FurrowController rc = getRingController();
         rc.sculptClicked();
     }
@@ -3723,4 +3790,3 @@ public class SegmentationController {
         shutdownActions.add(action);
     }
 }
-

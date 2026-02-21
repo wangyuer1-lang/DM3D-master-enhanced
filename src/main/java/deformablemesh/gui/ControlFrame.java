@@ -69,7 +69,6 @@ import javax.swing.JRadioButton;
 import javax.swing.JScrollPane;
 import javax.swing.JTabbedPane;
 import javax.swing.JTextField;
-import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -118,6 +117,7 @@ public class ControlFrame implements ReadyObserver, FrameListener {
     boolean ready = true;
     ArrayList<JComponent> buttons = new ArrayList<>();
     JButton deformButton;
+    JButton bakeMeshButton;
     FrameIndicator frameIndicator = new FrameIndicator();
     private JFrame frame;
     JTabbedPane tabbedPane;
@@ -597,18 +597,21 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         return clear_mesh;
     }
 
-    public JToggleButton createButtonBakeMesh(){
-        final JToggleButton bakeMesh = new JToggleButton("Bake mesh");
-        buttons.add(bakeMesh);
-        bakeMesh.addActionListener(evt -> {
-            if(bakeMesh.isSelected() && segmentationController.getSelectedMesh() == null){
+    public JButton createButtonBakeMesh(){
+        bakeMeshButton = new JButton("Bake mesh");
+        buttons.add(bakeMeshButton);
+        bakeMeshButton.addActionListener(evt -> {
+            boolean enableBake = !segmentationController.isBakeSelectedMeshEnabled();
+            if(enableBake && segmentationController.getSelectedMesh() == null){
                 IJ.error("Please select a mesh first");
-                bakeMesh.setSelected(false);
                 return;
             }
-            segmentationController.setBakeSelectedMeshEnabled(bakeMesh.isSelected());
+            segmentationController.setBakeSelectedMeshEnabled(enableBake);
+            EventQueue.invokeLater(() -> bakeMeshButton.setText(
+                    segmentationController.isBakeSelectedMeshEnabled() ? "Unbake mesh" : "Bake mesh"
+            ));
         });
-        return bakeMesh;
+        return bakeMeshButton;
     }
 
     public JButton createButtonPrevious(){
@@ -1922,6 +1925,11 @@ public class ControlFrame implements ReadyObserver, FrameListener {
     public void frameChanged(int i) {
 
         frameIndicator.update();
+        if(bakeMeshButton != null){
+            bakeMeshButton.setText(
+                    segmentationController.isBakeSelectedMeshEnabled() ? "Unbake mesh" : "Bake mesh"
+            );
+        }
     }
 
     class FrameIndicator{
@@ -2040,6 +2048,4 @@ public class ControlFrame implements ReadyObserver, FrameListener {
     }
 
 }
-
-
 
