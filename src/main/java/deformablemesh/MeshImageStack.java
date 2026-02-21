@@ -109,12 +109,9 @@ public class MeshImageStack {
     protected int FRAMES;
     protected int SLICES;
     protected int CHANNELS;
-    protected double[] bakeTargetData;
-    public static final int BAKE_MODE_NONE = 0;
-    public static final int BAKE_MODE_ATTRACT = 1;
-    public static final int BAKE_MODE_REPEL = 2;
-    protected int bakeMode = BAKE_MODE_NONE;
-    protected Object bakeSourceToken = null;
+    protected double[] bakeAttractCombined;
+    protected double[] bakeRepelCombined;
+    protected double[] bakeRepelSelfExclusion;
     protected Object currentSamplingToken = null;
     protected double bakeBlend = 0.25;
     protected double bakeStrength = 0.5;
@@ -458,28 +455,33 @@ public class MeshImageStack {
     }
     public double getInterpolatedValue(double[] xyz){
         double base = getInterpolatedBaseValue(xyz);
-        if(bakeTargetData == null){
+        if(bakeAttractCombined == null && bakeRepelCombined == null){
             return base;
         }
-        double target = interpolateFromArray(bakeTargetData, xyz);
-        if(bakeMode == BAKE_MODE_REPEL){
-            if(bakeSourceToken != null && bakeSourceToken == currentSamplingToken){
-                return base;
+        double eff = base;
+        if(bakeAttractCombined != null){
+            double target = interpolateFromArray(bakeAttractCombined, xyz);
+            if(target > base){
+                final double strength = 1.0;
+                final double beta = 6.0;
+                double max = getBakeNormalizationMax(base, target);
+                double baseN = base/max;
+                double targetN = target/max;
+                double dN = targetN - baseN;
+                double effN = baseN + strength*softplus(beta*dN)/beta;
+                eff = clampToTypeRange(effN*max);
             }
-            double eff = base - bakeStrength*target;
-            return clampToTypeRange(eff);
         }
-        if(target <= base){
-            return base;
+        if(bakeRepelCombined != null){
+            double repel = interpolateFromArray(bakeRepelCombined, xyz);
+            if(bakeRepelSelfExclusion != null){
+                repel -= interpolateFromArray(bakeRepelSelfExclusion, xyz);
+                if(repel < 0){
+                    repel = 0;
+                }
+            }
+            eff = eff - bakeStrength*repel;
         }
-        final double strength = 1.0;
-        final double beta = 6.0;
-        double max = getBakeNormalizationMax(base, target);
-        double baseN = base/max;
-        double targetN = target/max;
-        double dN = targetN - baseN;
-        double effN = baseN + strength*softplus(beta*dN)/beta;
-        double eff = effN*max;
         return clampToTypeRange(eff);
     }
 
@@ -1046,17 +1048,25 @@ public class MeshImageStack {
         return CHANNELS;
     }
 
-    public void setBakeTargetData(double[] bakeTargetData){
-        if(bakeTargetData != null && bakeTargetData.length != data.length){
-            throw new IllegalArgumentException("Bake target dimensions do not match stack dimensions.");
+    public void setCombinedBakeFields(double[] attractCombined, double[] repelCombined, double[] selfRepelExclusion){
+        if(attractCombined != null && attractCombined.length != data.length){
+            throw new IllegalArgumentException("Attract field dimensions do not match stack dimensions.");
         }
-        this.bakeTargetData = bakeTargetData;
+        if(repelCombined != null && repelCombined.length != data.length){
+            throw new IllegalArgumentException("Repel field dimensions do not match stack dimensions.");
+        }
+        if(selfRepelExclusion != null && selfRepelExclusion.length != data.length){
+            throw new IllegalArgumentException("Repel exclusion dimensions do not match stack dimensions.");
+        }
+        this.bakeAttractCombined = attractCombined;
+        this.bakeRepelCombined = repelCombined;
+        this.bakeRepelSelfExclusion = selfRepelExclusion;
     }
 
-    public void clearBakeTargetData(){
-        bakeTargetData = null;
-        bakeMode = BAKE_MODE_NONE;
-        bakeSourceToken = null;
+    public void clearCombinedBakeFields(){
+        bakeAttractCombined = null;
+        bakeRepelCombined = null;
+        bakeRepelSelfExclusion = null;
     }
 
     public void setBakeBlend(double bakeBlend){
@@ -1075,16 +1085,12 @@ public class MeshImageStack {
         return bakeStrength;
     }
 
-    public void setBakeMode(int bakeMode, Object sourceToken){
-        if(bakeMode < BAKE_MODE_NONE || bakeMode > BAKE_MODE_REPEL){
-            bakeMode = BAKE_MODE_NONE;
-        }
-        this.bakeMode = bakeMode;
-        this.bakeSourceToken = sourceToken;
-    }
-
     public void setCurrentSamplingToken(Object token){
         currentSamplingToken = token;
+    }
+
+    public Object getCurrentSamplingToken(){
+        return currentSamplingToken;
     }
 
     private double clampUnitInterval(double v){

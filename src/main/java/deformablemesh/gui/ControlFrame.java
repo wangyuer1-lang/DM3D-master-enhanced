@@ -313,14 +313,16 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         bcon.gridx = 3;
         buttonPanel.add( createButtonBakeMesh(), bcon );
         bcon.gridx = 4;
+        buttonPanel.add(createButtonUnbakeAll(), bcon);
+        bcon.gridx = 5;
         buttonPanel.add(createBakeModeSelector(), bcon);
         bcon.gridy = 1;
         bcon.gridx = 0;
-        bcon.gridwidth = 5;
+        bcon.gridwidth = 6;
         buttonPanel.add(createBakeSettingsPanel(), bcon);
         bcon.gridy = 2;
         bcon.gridx = 0;
-        bcon.gridwidth = 5;
+        bcon.gridwidth = 6;
         JPanel remButtonUnits = createRemeshPanel();
         buttonPanel.add( remButtonUnits, bcon);
         buttonPanel.setOpaque(true);
@@ -617,6 +619,13 @@ public class ControlFrame implements ReadyObserver, FrameListener {
             segmentationController.setBakeSelectedMeshEnabled(enableBake);
         });
         return bakeMeshButton;
+    }
+
+    public JButton createButtonUnbakeAll(){
+        JButton button = new JButton("Unbake all");
+        buttons.add(button);
+        button.addActionListener(evt -> segmentationController.unbakeAllMeshes());
+        return button;
     }
 
     private JPanel createBakeSettingsPanel(){
