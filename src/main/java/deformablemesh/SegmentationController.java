@@ -83,6 +83,9 @@ import deformablemesh.util.connectedcomponents.Region;
 import ij.IJ;
 import ij.ImagePlus;
 import ij.ImageStack;
+import ij.gui.ImageRoi;
+import ij.gui.Overlay;
+import ij.gui.Roi;
 import ij.measure.Calibration;
 import ij.plugin.Resizer;
 import ij.process.ColorProcessor;
@@ -134,7 +137,9 @@ public class SegmentationController {
     private Track bakedTrack = null;
     private int bakedFrame = -1;
     private int bakedChannel = -1;
-    private List<Object> bakedOriginalPixels = null;
+    private double[] bakedOriginalData = null;
+    private ImagePlus bakedOverlayPlus = null;
+    private List<Roi> bakedOverlayRois = null;
 
     /**
      * Creates a controller for the supplied model.
@@ -2870,9 +2875,10 @@ public class SegmentationController {
         }
         int frame = getCurrentFrame();
         int channel = getCurrentChannel();
-        List<Object> original = MeshBakeUtils.copyFramePixels(stack, frame, channel);
-        MeshBakeUtils.bakeSelectedMeshOutline(stack, mesh, frame, channel, 50.0);
-        bakedOriginalPixels = original;
+        boolean[] outline = MeshBakeUtils.createOutlineMask(stack, mesh);
+        bakedOriginalData = Arrays.copyOf(stack.data, stack.data.length);
+        MeshBakeUtils.applyOutlineToStackData(stack, outline);
+        applyBakeOverlay(stack, outline, frame, channel);
         bakedTrack = selectedTrack;
         bakedFrame = frame;
         bakedChannel = channel;
@@ -2889,11 +2895,14 @@ public class SegmentationController {
         if(!bakeSelectedMeshEnabled){
             return;
         }
-        MeshImageStack stack = getMeshImageStack();
-        if(stack != null && stack.getOriginalPlus() != null && bakedOriginalPixels != null){
-            MeshBakeUtils.restoreFramePixels(stack, bakedFrame, bakedChannel, bakedOriginalPixels);
-            refreshCurrentFrameIfShowing(bakedFrame, bakedChannel);
+        if(bakedOriginalData != null){
+            MeshImageStack stack = getMeshImageStack();
+            if(stack != null && stack.data.length == bakedOriginalData.length){
+                System.arraycopy(bakedOriginalData, 0, stack.data, 0, bakedOriginalData.length);
+                refreshCurrentFrameIfShowing(bakedFrame, bakedChannel);
+            }
         }
+        removeBakeOverlay();
         clearBakeSelectedMeshState();
         model.refreshCurrentFrame();
         model.notifyMeshListeners();
@@ -2906,11 +2915,62 @@ public class SegmentationController {
     }
 
     private void clearBakeSelectedMeshState(){
+        removeBakeOverlay();
         bakeSelectedMeshEnabled = false;
         bakedTrack = null;
         bakedFrame = -1;
         bakedChannel = -1;
-        bakedOriginalPixels = null;
+        bakedOriginalData = null;
+    }
+
+    private void applyBakeOverlay(MeshImageStack stack, boolean[] outline, int frame, int channel){
+        removeBakeOverlay();
+        ImagePlus plus = stack.getOriginalPlus();
+        if(plus == null){
+            return;
+        }
+        Overlay overlay = plus.getOverlay();
+        if(overlay == null){
+            overlay = new Overlay();
+        }
+        List<ImageRoi> rois = MeshBakeUtils.createOutlineOverlayRois(
+                outline,
+                stack.getWidthPx(),
+                stack.getHeightPx(),
+                stack.getNSlices(),
+                frame,
+                channel
+        );
+        for(ImageRoi roi: rois){
+            overlay.add(roi);
+        }
+        plus.setOverlay(overlay);
+        plus.updateAndDraw();
+        bakedOverlayPlus = plus;
+        bakedOverlayRois = new ArrayList<>(rois);
+    }
+
+    private void removeBakeOverlay(){
+        if(bakedOverlayPlus == null){
+            return;
+        }
+        Overlay overlay = bakedOverlayPlus.getOverlay();
+        if(overlay != null && bakedOverlayRois != null && !bakedOverlayRois.isEmpty()){
+            for(int i = overlay.size() - 1; i >= 0; i--){
+                Roi roi = overlay.get(i);
+                if(bakedOverlayRois.contains(roi)){
+                    overlay.remove(i);
+                }
+            }
+            if(overlay.size() == 0){
+                bakedOverlayPlus.setOverlay(null);
+            } else{
+                bakedOverlayPlus.setOverlay(overlay);
+            }
+        }
+        bakedOverlayPlus.updateAndDraw();
+        bakedOverlayPlus = null;
+        bakedOverlayRois = null;
     }
 
     public boolean isBakeSelectedMeshEnabled(){
