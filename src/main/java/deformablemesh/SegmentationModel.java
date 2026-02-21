@@ -398,6 +398,11 @@ public class SegmentationModel {
         }
     }
 
+    public void refreshCurrentFrame(){
+        stack.copyValues();
+        notifyFrameListeners();
+    }
+
     public void setNormalizerWeight(double d) {
         normalize = d;
     }
@@ -1075,7 +1080,6 @@ public class SegmentationModel {
     }
 
 }
-
 
 
 

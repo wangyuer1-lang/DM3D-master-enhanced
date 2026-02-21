@@ -69,6 +69,7 @@ import javax.swing.JRadioButton;
 import javax.swing.JScrollPane;
 import javax.swing.JTabbedPane;
 import javax.swing.JTextField;
+import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -307,9 +308,11 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         buttonPanel.add(createButtonDeform(), bcon );
         bcon.gridx = 2;
         buttonPanel.add( createButtonClearMesh(), bcon );
+        bcon.gridx = 3;
+        buttonPanel.add( createButtonBakeMesh(), bcon );
         bcon.gridy = 1;
         bcon.gridx = 0;
-        bcon.gridwidth = 3;
+        bcon.gridwidth = 4;
         JPanel remButtonUnits = createRemeshPanel();
         buttonPanel.add( remButtonUnits, bcon);
         buttonPanel.setOpaque(true);
@@ -592,6 +595,20 @@ public class ControlFrame implements ReadyObserver, FrameListener {
             finished();
         });
         return clear_mesh;
+    }
+
+    public JToggleButton createButtonBakeMesh(){
+        final JToggleButton bakeMesh = new JToggleButton("Bake mesh");
+        buttons.add(bakeMesh);
+        bakeMesh.addActionListener(evt -> {
+            if(bakeMesh.isSelected() && segmentationController.getSelectedMesh() == null){
+                IJ.error("Please select a mesh first");
+                bakeMesh.setSelected(false);
+                return;
+            }
+            segmentationController.setBakeSelectedMeshEnabled(bakeMesh.isSelected());
+        });
+        return bakeMesh;
     }
 
     public JButton createButtonPrevious(){
@@ -2023,7 +2040,6 @@ public class ControlFrame implements ReadyObserver, FrameListener {
     }
 
 }
-
 
 
 

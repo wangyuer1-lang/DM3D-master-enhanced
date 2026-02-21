@@ -69,6 +69,7 @@ import deformablemesh.util.Create3DTrainingDataFromMeshes;
 import deformablemesh.util.CurvatureSurfacePlot;
 import deformablemesh.util.DistanceTransformMosaicImage;
 import deformablemesh.util.IntensitySurfacePlot;
+import deformablemesh.util.MeshBakeUtils;
 import deformablemesh.util.MeshAnalysis;
 import deformablemesh.util.MeshFaceObscuring;
 import deformablemesh.util.SnapShotRecorder;
@@ -129,6 +130,10 @@ public class SegmentationController {
     List<Runnable> shutdownActions = new ArrayList<>();
 
     private ExecutorService globalExecutor;
+    private boolean bakeSelectedMeshEnabled = false;
+    private int bakedFrame = -1;
+    private int bakedChannel = -1;
+    private List<Object> bakedOriginalPixels = null;
 
     /**
      * Creates a controller for the supplied model.
@@ -2456,6 +2461,7 @@ public class SegmentationController {
     public void setOriginalPlus(ImagePlus plus, int channel) {
         submit(
                 ()->{
+                    clearBakeSelectedMeshState();
                     model.setOriginalPlus(plus, channel);
 
                     Furrow3D f = getRingController().getFurrow();
@@ -2806,9 +2812,64 @@ public class SegmentationController {
     }
 
     public void setMeshImageStack(MeshImageStack image){
-
+        clearBakeSelectedMeshState();
         model.setMeshImageStack(image);
 
+    }
+
+    public void setBakeSelectedMeshEnabled(boolean enabled){
+        submit(() -> {
+            if(enabled){
+                enableBakeSelectedMesh();
+            } else{
+                disableBakeSelectedMesh();
+            }
+        });
+    }
+
+    private void enableBakeSelectedMesh(){
+        if(bakeSelectedMeshEnabled){
+            return;
+        }
+        MeshImageStack stack = getMeshImageStack();
+        DeformableMesh3D mesh = getSelectedMesh();
+        if(stack == null || mesh == null || stack.getOriginalPlus() == null){
+            return;
+        }
+        int frame = getCurrentFrame();
+        int channel = getCurrentChannel();
+        List<Object> original = MeshBakeUtils.copyFramePixels(stack, frame, channel);
+        MeshBakeUtils.bakeSelectedMeshOutline(stack, mesh, frame, channel, 50.0);
+        bakedOriginalPixels = original;
+        bakedFrame = frame;
+        bakedChannel = channel;
+        bakeSelectedMeshEnabled = true;
+        refreshCurrentFrameIfShowing(frame, channel);
+    }
+
+    private void disableBakeSelectedMesh(){
+        if(!bakeSelectedMeshEnabled){
+            return;
+        }
+        MeshImageStack stack = getMeshImageStack();
+        if(stack != null && stack.getOriginalPlus() != null && bakedOriginalPixels != null){
+            MeshBakeUtils.restoreFramePixels(stack, bakedFrame, bakedChannel, bakedOriginalPixels);
+            refreshCurrentFrameIfShowing(bakedFrame, bakedChannel);
+        }
+        clearBakeSelectedMeshState();
+    }
+
+    private void refreshCurrentFrameIfShowing(int frame, int channel){
+        if(frame == getCurrentFrame() && channel == getCurrentChannel()){
+            model.refreshCurrentFrame();
+        }
+    }
+
+    private void clearBakeSelectedMeshState(){
+        bakeSelectedMeshEnabled = false;
+        bakedFrame = -1;
+        bakedChannel = -1;
+        bakedOriginalPixels = null;
     }
 
 
@@ -3662,5 +3723,4 @@ public class SegmentationController {
         shutdownActions.add(action);
     }
 }
-
 
