@@ -1,60 +1,71 @@
-[![Build Status](https://github.com/PaluchLabUCL/DeformingMesh3D/actions/workflows/build.yml/badge.svg)](https://github.com/PaluchLabUCL/DeformingMesh3D/actions/workflows/build.yml)
+# DM3D enhanced edition
 
-# DM3D
+An enhanced edition of DM3D for 3D deformable mesh segmentation, derived from the original project and extended with workflow-focused baking behaviour.
 
-3D image segmentation for roundish cells.
-
-This repository is based on the original DM3D project:
+This repository is derived from the original DM3D project:
 https://github.com/PaluchLabUCL/DeformingMesh3D
 
-## installation
+## what this version adds
 
-The easiest installation path is through the Fiji update site.
+- `bake mesh` integration for deformation workflows driven by external energy sampling.
+- reversible `bake mesh` and `unbake` behaviour without permanent pixel burn-in on the displayed image.
+- per-track bake state so multiple tracks can remain baked at the same time.
+- internal field coupling for deformation energy with track-aware behaviour during sampling.
+- mode selection with `attract` and `repel`.
+- `bake region` options: `fill inside`, `fill outside`, and `outline only`.
 
-1. Open Fiji.
-2. Go to `help` -> `update...`.
-3. In the updater, open `Manage Update Sites`.
-4. Add this update site:
-   https://sites.imagej.net/Odinsbane
-5. Apply updates.
+## build from source
 
-After update, the deforming mesh plugin is available in:
-`plugins` -> `PL_Mesh3D` -> `Deforming Mesh 3D`
+Prerequisites:
+- Java 8+ (build target is Java 8)
+- Maven 3.8+
 
-## documentation
+Build:
 
-User guides and API docs are available at:
-https://franciscrickinstitute.github.io/dm3d-pages/
+    mvn -DskipTests clean package
 
-## scripting quick start
+Expected artifact:
+- `target/dm3d-1.5.0-SNAPSHOT.jar`
 
-From Fiji, open `file` -> `new` -> `script`, then use Groovy or JavaScript.
+## installation in Fiji/ImageJ
 
-```groovy
-#@ Dm3dService service
-controls = service.getApplicationController()
-```
+Local installation without a release package:
+1. build the project with Maven.
+2. close Fiji/ImageJ if it is running.
+3. copy `target/dm3d-1.5.0-SNAPSHOT.jar` into your Fiji/ImageJ `plugins` directory.
+4. start Fiji/ImageJ.
+5. launch the plugin from the DM3D-related menu entry provided by the jar.
 
-## what is new in this version
+## quick start
 
-Recent updates focus on the bake workflow used by external energy sampling:
+1. open a 3D image stack in Fiji/ImageJ.
+2. launch DM3D and initialise or load mesh tracks.
+3. select a target track/mesh at the frame you want to process.
+4. choose the mode (`attract` or `repel`) in the bake controls.
+5. select a `bake region` option (`fill inside`, `fill outside`, or `outline only`).
+6. press `bake mesh` to apply baking to the selected track.
+7. run deformation controls; baked tracks stay locked while other tracks can continue.
+8. press `bake mesh` again on the selected baked track to unbake, or use `unbake all` for bulk cleanup.
 
-- `bake mesh` is integrated into the control workflow with reversible `bake mesh` / `unbake all` behavior.
-- per-track bake state is supported so multiple tracks can stay baked at the same time.
-- internal bake fields affect deformation energy without permanently editing displayed image pixels.
-- bake mode selection supports `attract` and `repel`.
-- `bake region` options are standardized as `fill inside`, `fill outside`, and `outline only`.
+## bake region modes
 
-## credits and licensing
+- `fill inside`: applies interior fill plus outline influence for the selected mesh.
+- `fill outside`: applies exterior fill plus outline influence for the selected mesh.
+- `outline only`: applies outline-focused influence without region fill.
 
-DM3D builds on work by the original DM3D authors and contributors.
+Using `fill inside` or `fill outside` assumes a closed mesh; open or invalid topology can reduce mask quality.
 
-License remains MIT; see `LICENSE` for details.
+## notes and limitations
 
-## reference
+- baking is intended to affect deformation behaviour via internal fields rather than permanently editing visible pixels.
+- baked state is stored per track; clearing or replacing track data can invalidate previous bake context.
+- mesh topology and image quality still control practical stability of deformation.
 
-[Chapter 19 - An active contour ImageJ plugin to monitor daughter cell size in 3D during cytokinesis](https://www.sciencedirect.com/science/article/pii/S0091679X16300607?via%3Dihub)
+## upstream and credits
 
-MB Smith, A Chaigne, EK Paluch
+- upstream project: https://github.com/PaluchLabUCL/DeformingMesh3D
+- reference chapter: https://doi.org/10.1016/bs.mcb.2016.05.003
 
-https://doi.org/10.1016/bs.mcb.2016.05.003
+## license
+
+This project is distributed under the MIT license. See `LICENSE` for the full text.
