@@ -651,15 +651,33 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         buttons.add(strength);
 
         gbc.gridx = 4;
-        panel.add(new JLabel("barrier keep"), gbc);
+        panel.add(new JLabel("Bake keep"), gbc);
         gbc.gridx = 5;
-        JComboBox<String> barrierKeep = new JComboBox<>(new String[]{"Keep outside", "Keep inside"});
-        barrierKeep.setSelectedIndex(segmentationController.isBarrierKeepOutside() ? 0 : 1);
-        barrierKeep.addActionListener(e ->
-                segmentationController.setBarrierKeepOutside(barrierKeep.getSelectedIndex() == 0)
-        );
-        panel.add(barrierKeep, gbc);
-        buttons.add(barrierKeep);
+        JComboBox<String> bakeKeep = new JComboBox<>(new String[]{"Keep inside", "Keep outside", "Keep outline"});
+        switch(segmentationController.getBakeKeepSelection()){
+            case INSIDE:
+                bakeKeep.setSelectedIndex(0);
+                break;
+            case OUTSIDE:
+                bakeKeep.setSelectedIndex(1);
+                break;
+            case OUTLINE:
+            default:
+                bakeKeep.setSelectedIndex(2);
+                break;
+        }
+        bakeKeep.addActionListener(e -> {
+            int idx = bakeKeep.getSelectedIndex();
+            if(idx == 0){
+                segmentationController.setBakeKeepSelection(SegmentationController.BakeKeep.INSIDE);
+            } else if(idx == 1){
+                segmentationController.setBakeKeepSelection(SegmentationController.BakeKeep.OUTSIDE);
+            } else{
+                segmentationController.setBakeKeepSelection(SegmentationController.BakeKeep.OUTLINE);
+            }
+        });
+        panel.add(bakeKeep, gbc);
+        buttons.add(bakeKeep);
         return panel;
     }
 
@@ -669,18 +687,18 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         panel.setOpaque(false);
         ButtonGroup group = new ButtonGroup();
         JRadioButton attract = new JRadioButton("Attract");
-        JRadioButton barrier = new JRadioButton("Barrier");
+        JRadioButton repel = new JRadioButton("Repel");
         attract.setOpaque(false);
-        barrier.setOpaque(false);
+        repel.setOpaque(false);
         attract.setSelected(true);
         attract.addActionListener(e -> segmentationController.setBakeModeSelection(SegmentationController.BakeMode.ATTRACT));
-        barrier.addActionListener(e -> segmentationController.setBakeModeSelection(SegmentationController.BakeMode.BARRIER));
+        repel.addActionListener(e -> segmentationController.setBakeModeSelection(SegmentationController.BakeMode.REPEL));
         group.add(attract);
-        group.add(barrier);
+        group.add(repel);
         panel.add(attract);
-        panel.add(barrier);
+        panel.add(repel);
         buttons.add(attract);
-        buttons.add(barrier);
+        buttons.add(repel);
         return panel;
     }
 

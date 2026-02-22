@@ -458,14 +458,6 @@ public class MeshImageStack {
         if(bakeAttractCombined == null && bakeRepelCombined == null){
             return base;
         }
-        if(bakeRepelCombined != null){
-            double ceiling = interpolateFromArray(bakeRepelCombined, xyz);
-            double capped = Math.min(base, ceiling);
-            if(capped + 1e-9 < base){
-                return clampToTypeRange(capped);
-            }
-            base = capped;
-        }
         double eff = base;
         if(bakeAttractCombined != null){
             double target = interpolateFromArray(bakeAttractCombined, xyz);
@@ -479,6 +471,10 @@ public class MeshImageStack {
                 double effN = baseN + strength*softplus(beta*dN)/beta;
                 eff = clampToTypeRange(effN*max);
             }
+        }
+        if(bakeRepelCombined != null){
+            double ceiling = interpolateFromArray(bakeRepelCombined, xyz);
+            eff = Math.min(eff, ceiling);
         }
         return clampToTypeRange(eff);
     }

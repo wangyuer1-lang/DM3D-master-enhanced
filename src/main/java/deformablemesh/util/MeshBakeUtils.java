@@ -7,6 +7,7 @@ import ij.gui.ImageRoi;
 import ij.ImagePlus;
 import ij.ImageStack;
 import ij.process.ByteProcessor;
+import ij.process.ColorProcessor;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,7 +23,7 @@ public class MeshBakeUtils {
         return createOutlineMask(mask);
     }
 
-    private static double getTypeMaxIntensity(MeshImageStack stack){
+    public static double getTypeMaxIntensity(MeshImageStack stack){
         switch(stack.getType()){
             case MeshImageStack.INT8:
                 return 255.0;
@@ -266,6 +267,41 @@ public class MeshBakeUtils {
             ImageRoi roi = new ImageRoi(0, 0, bp);
             roi.setZeroTransparent(true);
             roi.setOpacity(0.45);
+            roi.setPosition(channel + 1, z + 1, frame + 1);
+            rois.add(roi);
+        }
+        return rois;
+    }
+
+    public static List<ImageRoi> createMaskOverlayRois(
+            boolean[] mask,
+            int width,
+            int height,
+            int depth,
+            int frame,
+            int channel,
+            int rgb,
+            double opacity
+    ){
+        int sliceSize = width*height;
+        List<ImageRoi> rois = new ArrayList<>();
+        for(int z = 0; z<depth; z++){
+            int offset = z*sliceSize;
+            int[] pixels = new int[sliceSize];
+            boolean hasMask = false;
+            for(int i = 0; i<sliceSize; i++){
+                if(mask[offset + i]){
+                    pixels[i] = rgb;
+                    hasMask = true;
+                }
+            }
+            if(!hasMask){
+                continue;
+            }
+            ColorProcessor cp = new ColorProcessor(width, height, pixels);
+            ImageRoi roi = new ImageRoi(0, 0, cp);
+            roi.setZeroTransparent(true);
+            roi.setOpacity(opacity);
             roi.setPosition(channel + 1, z + 1, frame + 1);
             rois.add(roi);
         }
