@@ -109,6 +109,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
@@ -176,10 +177,16 @@ public class SegmentationController {
     private ExecutorService globalExecutor;
     private final Map<Track, BakeState> bakedTrackStates = new HashMap<>();
     private final int bakeShells = 6;
+    private static final int SELECTION_CYCLE_CLICK_THRESHOLD_PX = 3;
     private BakeMode bakeModeSelection = BakeMode.ATTRACT;
     private BakeKeep bakeKeepSelection = BakeKeep.OUTSIDE;
     private double bakeBlend = 0.25;
     private double bakeStrength = 0.5;
+    private String lastSelectionCycleSource = null;
+    private int lastSelectionCycleX = Integer.MIN_VALUE;
+    private int lastSelectionCycleY = Integer.MIN_VALUE;
+    private int selectionCycleIndex = 0;
+    private List<DeformableMesh3D> lastSelectionCandidates = new ArrayList<>();
 
     /**
      * Creates a controller for the supplied model.
@@ -1464,6 +1471,49 @@ public class SegmentationController {
         submit(()->model.selectTrackWithMesh(mesh));
     }
 
+    public synchronized DeformableMesh3D chooseCycledSelection(
+            String source,
+            int x,
+            int y,
+            boolean shiftDown,
+            List<DeformableMesh3D> candidates
+    ){
+        if(candidates == null || candidates.isEmpty()){
+            return null;
+        }
+
+        boolean sameSource = Objects.equals(lastSelectionCycleSource, source);
+        boolean sameLocation = Math.abs(x - lastSelectionCycleX) <= SELECTION_CYCLE_CLICK_THRESHOLD_PX
+                && Math.abs(y - lastSelectionCycleY) <= SELECTION_CYCLE_CLICK_THRESHOLD_PX;
+        boolean sameCandidates = sameCandidates(candidates, lastSelectionCandidates);
+        if(!(sameSource && sameLocation && sameCandidates)){
+            selectionCycleIndex = 0;
+        }
+
+        int selectedIndex = Math.floorMod(selectionCycleIndex + (shiftDown ? 1 : 0), candidates.size());
+        DeformableMesh3D selected = candidates.get(selectedIndex);
+
+        selectionCycleIndex = Math.floorMod(selectedIndex + 1, candidates.size());
+        lastSelectionCycleSource = source;
+        lastSelectionCycleX = x;
+        lastSelectionCycleY = y;
+        lastSelectionCandidates = new ArrayList<>(candidates);
+
+        return selected;
+    }
+
+    private boolean sameCandidates(List<DeformableMesh3D> first, List<DeformableMesh3D> second){
+        if(first.size() != second.size()){
+            return false;
+        }
+        for(int i = 0; i < first.size(); i++){
+            if(first.get(i) != second.get(i)){
+                return false;
+            }
+        }
+        return true;
+    }
+
     /**
      * Adds the provided mesh to the model. The behavior is conditional on the currently selected track.
      *
@@ -2068,13 +2118,12 @@ public class SegmentationController {
                     main.submit(() -> {
                         MeshImageStack stack = getMeshImageStack();
                         try {
+                            if(stack != null){
+                                stack.setCurrentSamplingToken(null);
+                                syncBakeTargetForCurrentView();
+                            }
+                            model.deformMeshes(meshes, steps);
                             for(DeformableMesh3D mesh: meshes){
-                                Track track = getAllTracks().stream().filter(t -> t.containsMesh(mesh)).findFirst().orElse(null);
-                                if(stack != null){
-                                    stack.setCurrentSamplingToken(track);
-                                    syncBakeTargetForCurrentView(track);
-                                }
-                                model.deformMesh(mesh, steps);
                                 newPositions.add(Arrays.copyOf(mesh.positions, mesh.positions.length));
                             }
                         } finally {

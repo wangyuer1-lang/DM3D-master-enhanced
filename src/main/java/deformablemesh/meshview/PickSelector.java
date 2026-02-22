@@ -42,11 +42,6 @@ import java.util.Set;
  */
 public class PickSelector implements CanvasView {
     SegmentationController controller;
-    private static final int CLICK_RESET_THRESHOLD_PX = 3;
-    private int lastClickX = Integer.MIN_VALUE;
-    private int lastClickY = Integer.MIN_VALUE;
-    private int cycleIndex = 0;
-    private List<DeformableMesh3D> lastCandidates = new ArrayList<>();
 
     public PickSelector(SegmentationController c){
         this.controller = c;
@@ -59,41 +54,18 @@ public class PickSelector implements CanvasView {
             if(candidates.isEmpty()){
                 return;
             }
-            boolean sameClickLocation = isSameClickLocation(evt);
-            if(!sameClickLocation || !sameCandidates(candidates)){
-                cycleIndex = 0;
-            }
-            int selectedIndex = Math.floorMod(cycleIndex, candidates.size());
-            if(evt.isShiftDown()){
-                selectedIndex = Math.floorMod(selectedIndex + 1, candidates.size());
-            }
-            controller.selectMesh(candidates.get(selectedIndex));
-            cycleIndex = Math.floorMod(selectedIndex + 1, candidates.size());
-            lastClickX = evt.getX();
-            lastClickY = evt.getY();
-            lastCandidates = new ArrayList<>(candidates);
-        }
-
-    }
-
-    private boolean isSameClickLocation(MouseEvent evt){
-        if(lastClickX == Integer.MIN_VALUE || lastClickY == Integer.MIN_VALUE){
-            return false;
-        }
-        return Math.abs(evt.getX() - lastClickX) <= CLICK_RESET_THRESHOLD_PX
-                && Math.abs(evt.getY() - lastClickY) <= CLICK_RESET_THRESHOLD_PX;
-    }
-
-    private boolean sameCandidates(List<DeformableMesh3D> candidates){
-        if(candidates.size() != lastCandidates.size()){
-            return false;
-        }
-        for(int i = 0; i < candidates.size(); i++){
-            if(candidates.get(i) != lastCandidates.get(i)){
-                return false;
+            DeformableMesh3D choice = controller.chooseCycledSelection(
+                    "3d-canvas",
+                    evt.getX(),
+                    evt.getY(),
+                    evt.isShiftDown(),
+                    candidates
+            );
+            if(choice != null){
+                controller.selectMesh(choice);
             }
         }
-        return true;
+
     }
 
     private List<DeformableMesh3D> collectCandidates(PickResult[] results, int frame){
