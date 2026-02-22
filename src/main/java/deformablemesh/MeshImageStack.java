@@ -1044,13 +1044,13 @@ public class MeshImageStack {
 
     public void setCombinedBakeFields(double[] attractCombined, double[] repelCombined, double[] selfRepelExclusion){
         if(attractCombined != null && attractCombined.length != data.length){
-            throw new IllegalArgumentException("Attract field dimensions do not match stack dimensions.");
+            throw new IllegalArgumentException("attract field dimensions do not match stack dimensions.");
         }
         if(repelCombined != null && repelCombined.length != data.length){
-            throw new IllegalArgumentException("Repel field dimensions do not match stack dimensions.");
+            throw new IllegalArgumentException("repel field dimensions do not match stack dimensions.");
         }
         if(selfRepelExclusion != null && selfRepelExclusion.length != data.length){
-            throw new IllegalArgumentException("Repel exclusion dimensions do not match stack dimensions.");
+            throw new IllegalArgumentException("repel exclusion dimensions do not match stack dimensions.");
         }
         this.bakeAttractCombined = attractCombined;
         this.bakeRepelCombined = repelCombined;

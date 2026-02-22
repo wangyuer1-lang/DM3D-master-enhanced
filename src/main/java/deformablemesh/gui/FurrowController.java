@@ -165,7 +165,7 @@ public class FurrowController implements FrameListener, ListDataListener {
             return false;
         }
         if(model.isSelectedTrackBaked()){
-            ij.IJ.error("Mesh is baked/locked. Unbake to deform.");
+            ij.IJ.error("mesh is baked/locked. unbake to deform.");
             return false;
         }
         if(modifier == null){
@@ -229,7 +229,7 @@ public class FurrowController implements FrameListener, ListDataListener {
             return;
         }
         if(model.isSelectedTrackBaked()){
-            ij.IJ.error("Mesh is baked/locked. Unbake to deform.");
+            ij.IJ.error("mesh is baked/locked. unbake to deform.");
             return;
         }
         if(modifier==null ) initializeModifier();
@@ -241,7 +241,7 @@ public class FurrowController implements FrameListener, ListDataListener {
             return;
         }
         if(model.isSelectedTrackBaked()){
-            ij.IJ.error("Mesh is baked/locked. Unbake to deform.");
+            ij.IJ.error("mesh is baked/locked. unbake to deform.");
             return;
         }
         if(modifier == null) initializeModifier();
@@ -262,7 +262,7 @@ public class FurrowController implements FrameListener, ListDataListener {
         DeformableMesh3D original = modifier.getOriginalMesh();
         Track host = model.getAllTracks().stream().filter(t->t.containsMesh(original)).findFirst().orElse(null);
         if(model.isTrackBaked(host)){
-            ij.IJ.error("Mesh is baked/locked. Unbake to deform.");
+            ij.IJ.error("mesh is baked/locked. unbake to deform.");
             sliceView.removeDrawable(modifier);
             modifier = null;
             activateSelectMeshMode();

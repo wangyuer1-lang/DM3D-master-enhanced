@@ -629,14 +629,14 @@ public class ControlFrame implements ReadyObserver, FrameListener {
     }
 
     public JButton createButtonBakeMesh(){
-        bakeMeshButton = new JButton("Bake mesh");
+        bakeMeshButton = new JButton("bake mesh");
         buttons.add(bakeMeshButton);
         bakeMeshButton.addActionListener(evt -> segmentationController.toggleBakeSelectedMesh());
         return bakeMeshButton;
     }
 
     public JButton createButtonUnbakeAll(){
-        JButton button = new JButton("Unbake all");
+        JButton button = new JButton("unbake all");
         buttons.add(button);
         button.addActionListener(evt -> segmentationController.unbakeAllMeshes());
         return button;
@@ -672,9 +672,9 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         buttons.add(strength);
 
         gbc.gridx = 4;
-        panel.add(new JLabel("Bake keep"), gbc);
+        panel.add(new JLabel("bake region"), gbc);
         gbc.gridx = 5;
-        JComboBox<String> bakeKeep = new JComboBox<>(new String[]{"Keep inside", "Keep outside", "Keep outline"});
+        JComboBox<String> bakeKeep = new JComboBox<>(new String[]{"fill inside", "fill outside", "outline only"});
         switch(segmentationController.getBakeKeepSelection()){
             case INSIDE:
                 bakeKeep.setSelectedIndex(0);
@@ -707,8 +707,8 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         panel.setLayout(new BoxLayout(panel, BoxLayout.LINE_AXIS));
         panel.setOpaque(false);
         ButtonGroup group = new ButtonGroup();
-        JRadioButton attract = new JRadioButton("Attract");
-        JRadioButton repel = new JRadioButton("Repel");
+        JRadioButton attract = new JRadioButton("attract");
+        JRadioButton repel = new JRadioButton("repel");
         attract.setOpaque(false);
         repel.setOpaque(false);
         attract.setSelected(true);

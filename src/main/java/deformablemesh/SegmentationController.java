@@ -3051,7 +3051,7 @@ public class SegmentationController {
             double[] pt = new double[]{mesh.positions[0], mesh.positions[1], mesh.positions[2]};
             double before = stack.getInterpolatedBaseValue(pt);
             double after = stack.getInterpolatedValue(pt);
-            IJ.log(String.format(Locale.US, "Bake debug at vertex: I_base=%.3f I_eff=%.3f", before, after));
+            IJ.log(String.format(Locale.US, "bake debug at vertex: I_base=%.3f I_eff=%.3f", before, after));
         }
         refreshCurrentFrameIfShowing(frame, channel);
         FurrowController ringController = getRingController();
@@ -3537,7 +3537,7 @@ public class SegmentationController {
     }
 
     private void showBakedLockedMessage(){
-        IJ.error("Mesh is baked/locked. Unbake to deform.");
+        IJ.error("mesh is baked/locked. unbake to deform.");
     }
 
 
