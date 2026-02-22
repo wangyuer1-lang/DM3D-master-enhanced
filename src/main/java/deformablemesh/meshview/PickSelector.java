@@ -32,6 +32,10 @@ import org.jogamp.java3d.GeometryArray;
 import org.jogamp.java3d.utils.picking.PickResult;
 
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Created by smithm3 on 24/05/18.
@@ -46,28 +50,42 @@ public class PickSelector implements CanvasView {
     public void updatePick(PickResult[] results, MouseEvent evt, boolean clicked) {
         if(clicked) {
             int frame = controller.getCurrentFrame();
-            DeformableMesh3D selected = controller.getSelectedMesh();
-            for(PickResult result: results){
-                for(Track track: controller.getAllTracks()){
-                    if(track.containsKey(frame)){
-                        DeformableMesh3D mesh = track.getMesh(frame);
-                        if(mesh==selected){
-                            continue;
-                        }
-                        if(mesh.data_object!=null){
-                            GeometryArray array = result.getGeometryArray();
-                            if(mesh.data_object.lines==array || mesh.data_object.surface_object.getGeometry()==array){
-                                controller.selectMesh(mesh);
-                                return;
-                            }
-
-                        }
-                    }
-                }
-
+            List<DeformableMesh3D> candidates = collectCandidates(results, frame);
+            if(candidates.isEmpty()){
+                return;
+            }
+            DeformableMesh3D choice = controller.chooseCycledSelection(
+                    "3d-canvas",
+                    evt.getX(),
+                    evt.getY(),
+                    evt.isShiftDown(),
+                    candidates
+            );
+            if(choice != null){
+                controller.selectMesh(choice);
             }
         }
 
+    }
+
+    private List<DeformableMesh3D> collectCandidates(PickResult[] results, int frame){
+        Set<DeformableMesh3D> ordered = new LinkedHashSet<>();
+        for(PickResult result: results){
+            GeometryArray array = result.getGeometryArray();
+            for(Track track: controller.getAllTracks()){
+                if(!track.containsKey(frame)){
+                    continue;
+                }
+                DeformableMesh3D mesh = track.getMesh(frame);
+                if(mesh.data_object == null || mesh.data_object.surface_object == null){
+                    continue;
+                }
+                if(mesh.data_object.lines == array || mesh.data_object.surface_object.getGeometry() == array){
+                    ordered.add(mesh);
+                }
+            }
+        }
+        return new ArrayList<>(ordered);
     }
 
     @Override

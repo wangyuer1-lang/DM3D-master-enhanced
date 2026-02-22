@@ -31,6 +31,8 @@ import deformablemesh.geometry.DeformableMesh3D;
 import deformablemesh.geometry.Furrow3D;
 import deformablemesh.geometry.FurrowManageModel;
 import deformablemesh.geometry.FurrowTransformer;
+import deformablemesh.geometry.Intersection;
+import deformablemesh.geometry.interceptable.InterceptingMesh3D;
 import deformablemesh.geometry.modifier.MeshModifier;
 import deformablemesh.geometry.projectable.ProjectableMesh;
 import deformablemesh.io.FurrowWriter;
@@ -51,6 +53,7 @@ import java.awt.event.MouseEvent;
 import java.awt.geom.Point2D;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
@@ -64,6 +67,16 @@ import java.util.stream.Collectors;
  * Created by msmith on 4/14/14.
  */
 public class FurrowController implements FrameListener, ListDataListener {
+    private static class DepthHit{
+        final DeformableMesh3D mesh;
+        final double depth;
+
+        DepthHit(DeformableMesh3D mesh, double depth){
+            this.mesh = mesh;
+            this.depth = depth;
+        }
+    }
+
     final FurrowManageModel furrowManager;
     public SegmentationController model;
     MouseAdapter currentControls;
@@ -151,6 +164,10 @@ public class FurrowController implements FrameListener, ListDataListener {
         if(model.getSelectedMesh() == null){
             return false;
         }
+        if(model.isSelectedTrackBaked()){
+            ij.IJ.error("Mesh is baked/locked. Unbake to deform.");
+            return false;
+        }
         if(modifier == null){
             initializeModifier();
             return true;
@@ -211,12 +228,20 @@ public class FurrowController implements FrameListener, ListDataListener {
         if(model.getSelectedMesh() == null){
             return;
         }
+        if(model.isSelectedTrackBaked()){
+            ij.IJ.error("Mesh is baked/locked. Unbake to deform.");
+            return;
+        }
         if(modifier==null ) initializeModifier();
         modifier.setSculptMode();
     }
 
     public void translateClicked(){
         if(model.getSelectedMesh() == null){
+            return;
+        }
+        if(model.isSelectedTrackBaked()){
+            ij.IJ.error("Mesh is baked/locked. Unbake to deform.");
             return;
         }
         if(modifier == null) initializeModifier();
@@ -236,6 +261,15 @@ public class FurrowController implements FrameListener, ListDataListener {
         modifier.deactivate();
         DeformableMesh3D original = modifier.getOriginalMesh();
         Track host = model.getAllTracks().stream().filter(t->t.containsMesh(original)).findFirst().orElse(null);
+        if(model.isTrackBaked(host)){
+            ij.IJ.error("Mesh is baked/locked. Unbake to deform.");
+            sliceView.removeDrawable(modifier);
+            modifier = null;
+            activateSelectMeshMode();
+            release();
+            sliceView.repaint();
+            return;
+        }
         if(host != null){
             int frame = host.getFrame(original);
             model.setMesh(host, frame, modifier.getMesh());
@@ -330,24 +364,83 @@ public class FurrowController implements FrameListener, ListDataListener {
                 );
 
                 Point2D pt = sliceView.getScaledLocation(e.getPoint());
-
-                DeformableMesh3D mesh = model.getSelectedMesh();
-                for(ProjectableMesh m: selectableMeshes){
-
-                    if(m.getMesh() == mesh){
-                        continue;
-                    }
-
-                    Shape s = m.continuousPaths(t);
-
-                    if(s.contains(pt)){
-                        model.selectMesh(m.getMesh());
-                        sliceView.repaint();
-                        break;
-                    }
+                double[] rayOrigin = t.getVolumeCoordinates(new double[]{pt.getX(), pt.getY()});
+                double[] rayDirection = normalizeDirection(furrow.normal);
+                List<DeformableMesh3D> candidates = collectSliceSelectionCandidates(t, pt, rayOrigin, rayDirection);
+                if(candidates.isEmpty()){
+                    return;
+                }
+                DeformableMesh3D selected = model.chooseCycledSelection(
+                        "2d-slice",
+                        e.getX(),
+                        e.getY(),
+                        e.isShiftDown(),
+                        candidates
+                );
+                if(selected != null){
+                    model.selectMesh(selected);
+                    sliceView.repaint();
                 }
             }
         });
+    }
+
+    private List<DeformableMesh3D> collectSliceSelectionCandidates(
+            FurrowTransformer transformer,
+            Point2D clickPoint,
+            double[] rayOrigin,
+            double[] rayDirection
+    ){
+        List<DepthHit> hits = new ArrayList<>();
+        for(ProjectableMesh projectable: selectableMeshes){
+            Shape shape = projectable.continuousPaths(transformer);
+            if(!shape.contains(clickPoint)){
+                continue;
+            }
+            DeformableMesh3D mesh = projectable.getMesh();
+            InterceptingMesh3D intercepting = new InterceptingMesh3D(mesh);
+            List<Intersection> intersections = intercepting.getIntersections(rayOrigin, rayDirection);
+            if(intersections.isEmpty()){
+                continue;
+            }
+            double nearestPositiveDepth = intersections.stream()
+                    .mapToDouble(intersection -> projectedDistance(rayOrigin, rayDirection, intersection.location))
+                    .filter(depth -> depth >= 0)
+                    .min()
+                    .orElse(Double.POSITIVE_INFINITY);
+            if(Double.isInfinite(nearestPositiveDepth)){
+                nearestPositiveDepth = intersections.stream()
+                        .mapToDouble(intersection -> Math.abs(projectedDistance(rayOrigin, rayDirection, intersection.location)))
+                        .min()
+                        .orElse(Double.POSITIVE_INFINITY);
+            }
+            if(!Double.isInfinite(nearestPositiveDepth)){
+                hits.add(new DepthHit(mesh, nearestPositiveDepth));
+            }
+        }
+        hits.sort(Comparator.comparingDouble(hit -> hit.depth));
+        List<DeformableMesh3D> ordered = new ArrayList<>(hits.size());
+        for(DepthHit hit: hits){
+            if(!ordered.contains(hit.mesh)){
+                ordered.add(hit.mesh);
+            }
+        }
+        return ordered;
+    }
+
+    private double projectedDistance(double[] origin, double[] direction, double[] point){
+        double dx = point[0] - origin[0];
+        double dy = point[1] - origin[1];
+        double dz = point[2] - origin[2];
+        return dx*direction[0] + dy*direction[1] + dz*direction[2];
+    }
+
+    private double[] normalizeDirection(double[] direction){
+        double mag = Math.sqrt(direction[0]*direction[0] + direction[1]*direction[1] + direction[2]*direction[2]);
+        if(mag == 0){
+            return new double[]{0, 0, 1};
+        }
+        return new double[]{direction[0]/mag, direction[1]/mag, direction[2]/mag};
     }
 
 

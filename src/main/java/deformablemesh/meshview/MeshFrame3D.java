@@ -741,26 +741,33 @@ public class    MeshFrame3D {
                 if(mesh.data_object==null){
                     mesh.create3DObject();
                 }
-                if(mesh==selectedMesh){
-                    mesh.data_object.setWireColor(Color.GREEN);
-                } else{
-                    mesh.data_object.setWireColor(track.getColor());
-                    mesh.data_object.setShowWires(track.getShowWires());
-                }
+                styleMeshForTrack(mesh, track, mesh == selectedMesh);
                 addDataObject(mesh.data_object);
                 showing.add(mesh);
             } else{
-                if(mesh==selectedMesh){
-                    mesh.data_object.setWireColor(Color.GREEN);
-                } else{
-
-                    mesh.data_object.setWireColor(track.getColor());
-                    mesh.data_object.setShowWires(track.getShowWires());
-                }
+                styleMeshForTrack(mesh, track, mesh == selectedMesh);
             }
 
         }
 
+    }
+
+    private void styleMeshForTrack(DeformableMesh3D mesh, Track track, boolean selected){
+        if(segmentationController.isTrackBaked(track)){
+            Color bakedColor = selected ? Color.GREEN : Color.BLUE;
+            mesh.data_object.setColor(new Color(bakedColor.getRed(), bakedColor.getGreen(), bakedColor.getBlue(), 64));
+            mesh.data_object.setShowSurface(true);
+            mesh.data_object.setShowWires(false);
+            return;
+        }
+        mesh.data_object.setColor(track.getColor());
+        mesh.data_object.setShowSurface(track.getShowSurface());
+        mesh.data_object.setShowWires(track.getShowWires());
+        if(selected){
+            mesh.data_object.setWireColor(Color.GREEN);
+        } else{
+            mesh.data_object.setWireColor(track.getColor());
+        }
     }
 
     public JFrame getJFrame() {
@@ -840,5 +847,3 @@ public class    MeshFrame3D {
 
 
 }
-
-

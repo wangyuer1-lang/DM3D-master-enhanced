@@ -65,6 +65,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -103,6 +104,7 @@ public class SegmentationModel {
     private double normalize;
     private File lastSavedFile;
     private boolean hardBoundaries = false;
+    private Consumer<DeformableMesh3D> postUpdateConstraint = null;
 
     public SegmentationModel(){
 
@@ -141,6 +143,9 @@ public class SegmentationModel {
             selectedMesh.update();
             if(hardBoundaries){
                 selectedMesh.confine(getBounds());
+            }
+            if(postUpdateConstraint != null){
+                postUpdateConstraint.accept(selectedMesh);
             }
             deformations++;
         }
@@ -200,6 +205,9 @@ public class SegmentationModel {
                 if(hardBoundaries){
                     mesh.confine(getBounds());
                 }
+                if(postUpdateConstraint != null){
+                    postUpdateConstraint.accept(mesh);
+                }
                 if(stop){
                     break;
                 }
@@ -248,6 +256,9 @@ public class SegmentationModel {
             mesh.update();
             if(hardBoundaries){
                 mesh.confine(getBounds());
+            }
+            if(postUpdateConstraint != null){
+                postUpdateConstraint.accept(mesh);
             }
             deformations++;
         }
@@ -396,6 +407,11 @@ public class SegmentationModel {
         if(i!=stack.CURRENT){
             notifyFrameListeners();
         }
+    }
+
+    public void refreshCurrentFrame(){
+        stack.copyValues();
+        notifyFrameListeners();
     }
 
     public void setNormalizerWeight(double d) {
@@ -937,6 +953,10 @@ public class SegmentationModel {
         this.hardBoundaries = hardBoundaries;
     }
 
+    public void setPostUpdateConstraint(Consumer<DeformableMesh3D> postUpdateConstraint){
+        this.postUpdateConstraint = postUpdateConstraint;
+    }
+
 
     public void calculateInterfaceLineScan(Track track){
         List<Track> tracks = getAllTracks();
@@ -1075,8 +1095,6 @@ public class SegmentationModel {
     }
 
 }
-
-
 
 
 

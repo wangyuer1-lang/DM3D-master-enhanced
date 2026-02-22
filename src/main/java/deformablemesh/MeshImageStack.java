@@ -109,6 +109,12 @@ public class MeshImageStack {
     protected int FRAMES;
     protected int SLICES;
     protected int CHANNELS;
+    protected double[] bakeAttractCombined;
+    protected double[] bakeRepelCombined;
+    protected double[] bakeRepelSelfExclusion;
+    protected Object currentSamplingToken = null;
+    protected double bakeBlend = 0.25;
+    protected double bakeStrength = 0.5;
 
     public double MIN_VALUE;
     public double MAX_VALUE;
@@ -444,7 +450,36 @@ public class MeshImageStack {
     }
 
     final static double min_interp_value=1e-4;
+    public double getInterpolatedBaseValue(double[] xyz){
+        return interpolateFromArray(data, xyz);
+    }
     public double getInterpolatedValue(double[] xyz){
+        double base = getInterpolatedBaseValue(xyz);
+        if(bakeAttractCombined == null && bakeRepelCombined == null){
+            return base;
+        }
+        double eff = base;
+        if(bakeAttractCombined != null){
+            double target = interpolateFromArray(bakeAttractCombined, xyz);
+            if(target > base){
+                final double strength = 1.0;
+                final double beta = 6.0;
+                double max = getBakeNormalizationMax(base, target);
+                double baseN = base/max;
+                double targetN = target/max;
+                double dN = targetN - baseN;
+                double effN = baseN + strength*softplus(beta*dN)/beta;
+                eff = clampToTypeRange(effN*max);
+            }
+        }
+        if(bakeRepelCombined != null){
+            double ceiling = interpolateFromArray(bakeRepelCombined, xyz);
+            eff = Math.min(eff, ceiling);
+        }
+        return clampToTypeRange(eff);
+    }
+
+    private double interpolateFromArray(double[] volume, double[] xyz){
         double[] ndex = new double[3];
         int[] base = new int[3];
         double[] f = new double[3];
@@ -461,19 +496,19 @@ public class MeshImageStack {
             f[i] = base[i]==max_dex[i]?0:ndex[i] - base[i];
         }
 
-        double a = getValue(base[0],base[1], base[2]);
+        double a = getArrayValue(volume, base[0], base[1], base[2]);
 
         
         if(f[0]>min_interp_value){
-            double b = getValue(base[0]+1, base[1], base[2]);
+            double b = getArrayValue(volume, base[0]+1, base[1], base[2]);
             a = a + (b-a)*f[0];
         }
 
         if(f[1]>min_interp_value){
-            double c = getValue(base[0],base[1]+1, base[2]);
+            double c = getArrayValue(volume, base[0], base[1]+1, base[2]);
 
             if(f[0]>min_interp_value){
-                double d = getValue(base[0]+1, base[1]+1, base[2]);
+                double d = getArrayValue(volume, base[0]+1, base[1]+1, base[2]);
                 c = c + (d-c)*f[0];
             }
             a = a + (c-a)*f[1]; //first plane.
@@ -482,18 +517,18 @@ public class MeshImageStack {
         double v = a;
         if(f[2]>min_interp_value){
 
-            a = getValue(base[0],base[1], base[2]+1);
+            a = getArrayValue(volume, base[0], base[1], base[2]+1);
 
             if(f[0]>min_interp_value){
-                double b = getValue(base[0]+1, base[1], base[2]+1);
+                double b = getArrayValue(volume, base[0]+1, base[1], base[2]+1);
                 a = a + (b-a)*f[0];
             }
 
             if(f[1]>min_interp_value){
-                double c = getValue(base[0],base[1]+1, base[2]+1);
+                double c = getArrayValue(volume, base[0], base[1]+1, base[2]+1);
 
                 if(f[0]>min_interp_value){
-                    double d = getValue(base[0]+1, base[1]+1, base[2]+1);
+                    double d = getArrayValue(volume, base[0]+1, base[1]+1, base[2]+1);
                     c = c + (d-c)*f[0];
                 }
                 a = a + (c-a)*f[1];
@@ -503,6 +538,10 @@ public class MeshImageStack {
         }
 
         return v;
+    }
+
+    private double getArrayValue(double[] volume, int x, int y, int z){
+        return volume[x + y*dims[0] + z*dims[1]*dims[0]];
     }
 
     /**
@@ -1002,5 +1041,90 @@ public class MeshImageStack {
     public int getNChannels() {
         return CHANNELS;
     }
-}
 
+    public void setCombinedBakeFields(double[] attractCombined, double[] repelCombined, double[] selfRepelExclusion){
+        if(attractCombined != null && attractCombined.length != data.length){
+            throw new IllegalArgumentException("Attract field dimensions do not match stack dimensions.");
+        }
+        if(repelCombined != null && repelCombined.length != data.length){
+            throw new IllegalArgumentException("Repel field dimensions do not match stack dimensions.");
+        }
+        if(selfRepelExclusion != null && selfRepelExclusion.length != data.length){
+            throw new IllegalArgumentException("Repel exclusion dimensions do not match stack dimensions.");
+        }
+        this.bakeAttractCombined = attractCombined;
+        this.bakeRepelCombined = repelCombined;
+        this.bakeRepelSelfExclusion = selfRepelExclusion;
+    }
+
+    public void clearCombinedBakeFields(){
+        bakeAttractCombined = null;
+        bakeRepelCombined = null;
+        bakeRepelSelfExclusion = null;
+    }
+
+    public void setBakeBlend(double bakeBlend){
+        this.bakeBlend = clampUnitInterval(bakeBlend);
+    }
+
+    public double getBakeBlend(){
+        return bakeBlend;
+    }
+
+    public void setBakeStrength(double bakeStrength){
+        this.bakeStrength = clampUnitInterval(bakeStrength);
+    }
+
+    public double getBakeStrength(){
+        return bakeStrength;
+    }
+
+    public void setCurrentSamplingToken(Object token){
+        currentSamplingToken = token;
+    }
+
+    public Object getCurrentSamplingToken(){
+        return currentSamplingToken;
+    }
+
+    private double clampUnitInterval(double v){
+        if(v < 0){
+            return 0;
+        }
+        if(v > 1){
+            return 1;
+        }
+        return v;
+    }
+
+    private double clampToTypeRange(double v){
+        if(type == INT8){
+            return Math.max(0, Math.min(255, v));
+        }
+        if(type == INT16){
+            return Math.max(0, Math.min(65535, v));
+        }
+        return v;
+    }
+
+    private double softplus(double z){
+        if(z > 40){
+            return z;
+        }
+        if(z < -40){
+            return Math.exp(z);
+        }
+        return Math.log1p(Math.exp(z));
+    }
+
+    private double getBakeNormalizationMax(double base, double target){
+        if(type == INT8){
+            return 255.0;
+        }
+        if(type == INT16){
+            return 65535.0;
+        }
+        double dynamic = Math.max(Math.max(base, target), MAX_VALUE);
+        return dynamic > 0 ? dynamic : 1.0;
+    }
+}

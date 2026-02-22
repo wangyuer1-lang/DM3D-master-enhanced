@@ -54,6 +54,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
+import javax.swing.AbstractAction;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
@@ -67,9 +68,11 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JRadioButton;
 import javax.swing.JScrollPane;
+import javax.swing.JSpinner;
 import javax.swing.JTabbedPane;
 import javax.swing.JTextField;
 import javax.swing.KeyStroke;
+import javax.swing.SpinnerNumberModel;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -117,6 +120,7 @@ public class ControlFrame implements ReadyObserver, FrameListener {
     boolean ready = true;
     ArrayList<JComponent> buttons = new ArrayList<>();
     JButton deformButton;
+    JButton bakeMeshButton;
     FrameIndicator frameIndicator = new FrameIndicator();
     private JFrame frame;
     JTabbedPane tabbedPane;
@@ -160,6 +164,7 @@ public class ControlFrame implements ReadyObserver, FrameListener {
 
         frame.setContentPane(contentPanel);
         frame.setJMenuBar(createMenuBar(frame));
+        installGlobalHotkeys();
 
 
         frame.pack();
@@ -173,6 +178,25 @@ public class ControlFrame implements ReadyObserver, FrameListener {
 
     public void setVisible(boolean v){
         frame.setVisible(v);
+    }
+
+    private void installGlobalHotkeys(){
+        JComponent root = frame.getRootPane();
+        final String deformAllAction = "dm3d.deformAll";
+        root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK),
+                deformAllAction
+        );
+        root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.CTRL_MASK),
+                deformAllAction
+        );
+        root.getActionMap().put(deformAllAction, new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                deformAction(true);
+            }
+        });
     }
 
     public void shutdownControllerOnClose(){
@@ -307,9 +331,19 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         buttonPanel.add(createButtonDeform(), bcon );
         bcon.gridx = 2;
         buttonPanel.add( createButtonClearMesh(), bcon );
+        bcon.gridx = 3;
+        buttonPanel.add( createButtonBakeMesh(), bcon );
+        bcon.gridx = 4;
+        buttonPanel.add(createButtonUnbakeAll(), bcon);
+        bcon.gridx = 5;
+        buttonPanel.add(createBakeModeSelector(), bcon);
         bcon.gridy = 1;
         bcon.gridx = 0;
-        bcon.gridwidth = 3;
+        bcon.gridwidth = 6;
+        buttonPanel.add(createBakeSettingsPanel(), bcon);
+        bcon.gridy = 2;
+        bcon.gridx = 0;
+        bcon.gridwidth = 6;
         JPanel remButtonUnits = createRemeshPanel();
         buttonPanel.add( remButtonUnits, bcon);
         buttonPanel.setOpaque(true);
@@ -592,6 +626,101 @@ public class ControlFrame implements ReadyObserver, FrameListener {
             finished();
         });
         return clear_mesh;
+    }
+
+    public JButton createButtonBakeMesh(){
+        bakeMeshButton = new JButton("Bake mesh");
+        buttons.add(bakeMeshButton);
+        bakeMeshButton.addActionListener(evt -> segmentationController.toggleBakeSelectedMesh());
+        return bakeMeshButton;
+    }
+
+    public JButton createButtonUnbakeAll(){
+        JButton button = new JButton("Unbake all");
+        buttons.add(button);
+        button.addActionListener(evt -> segmentationController.unbakeAllMeshes());
+        return button;
+    }
+
+    private JPanel createBakeSettingsPanel(){
+        JPanel panel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        panel.add(new JLabel("blend"), gbc);
+        gbc.gridx = 1;
+        JSpinner blend = new JSpinner(
+                new SpinnerNumberModel(segmentationController.getBakeBlend(), 0.0, 1.0, 0.05)
+        );
+        blend.addChangeListener(e -> {
+            double v = ((Number)blend.getValue()).doubleValue();
+            segmentationController.setBakeBlend(v);
+        });
+        panel.add(blend, gbc);
+        buttons.add(blend);
+
+        gbc.gridx = 2;
+        panel.add(new JLabel("strength"), gbc);
+        gbc.gridx = 3;
+        JSpinner strength = new JSpinner(
+                new SpinnerNumberModel(segmentationController.getBakeStrength(), 0.0, 1.0, 0.05)
+        );
+        strength.addChangeListener(e -> {
+            double v = ((Number)strength.getValue()).doubleValue();
+            segmentationController.setBakeStrength(v);
+        });
+        panel.add(strength, gbc);
+        buttons.add(strength);
+
+        gbc.gridx = 4;
+        panel.add(new JLabel("Bake keep"), gbc);
+        gbc.gridx = 5;
+        JComboBox<String> bakeKeep = new JComboBox<>(new String[]{"Keep inside", "Keep outside", "Keep outline"});
+        switch(segmentationController.getBakeKeepSelection()){
+            case INSIDE:
+                bakeKeep.setSelectedIndex(0);
+                break;
+            case OUTSIDE:
+                bakeKeep.setSelectedIndex(1);
+                break;
+            case OUTLINE:
+            default:
+                bakeKeep.setSelectedIndex(2);
+                break;
+        }
+        bakeKeep.addActionListener(e -> {
+            int idx = bakeKeep.getSelectedIndex();
+            if(idx == 0){
+                segmentationController.setBakeKeepSelection(SegmentationController.BakeKeep.INSIDE);
+            } else if(idx == 1){
+                segmentationController.setBakeKeepSelection(SegmentationController.BakeKeep.OUTSIDE);
+            } else{
+                segmentationController.setBakeKeepSelection(SegmentationController.BakeKeep.OUTLINE);
+            }
+        });
+        panel.add(bakeKeep, gbc);
+        buttons.add(bakeKeep);
+        return panel;
+    }
+
+    private JPanel createBakeModeSelector(){
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.LINE_AXIS));
+        panel.setOpaque(false);
+        ButtonGroup group = new ButtonGroup();
+        JRadioButton attract = new JRadioButton("Attract");
+        JRadioButton repel = new JRadioButton("Repel");
+        attract.setOpaque(false);
+        repel.setOpaque(false);
+        attract.setSelected(true);
+        attract.addActionListener(e -> segmentationController.setBakeModeSelection(SegmentationController.BakeMode.ATTRACT));
+        repel.addActionListener(e -> segmentationController.setBakeModeSelection(SegmentationController.BakeMode.REPEL));
+        group.add(attract);
+        group.add(repel);
+        panel.add(attract);
+        panel.add(repel);
+        buttons.add(attract);
+        buttons.add(repel);
+        return panel;
     }
 
     public JButton createButtonPrevious(){
@@ -1028,6 +1157,7 @@ public class ControlFrame implements ReadyObserver, FrameListener {
 
         JMenuItem clearHistory = new JMenuItem("clear undo history");
         clearHistory.addActionListener(new UiAction(segmentationController::clearHistory));
+        edit.add(clearHistory);
         return edit;
     }
     public JMenu createMenuTrack(){
@@ -2023,7 +2153,3 @@ public class ControlFrame implements ReadyObserver, FrameListener {
     }
 
 }
-
-
-
-
