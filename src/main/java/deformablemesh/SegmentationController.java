@@ -125,7 +125,7 @@ public class SegmentationController {
     public enum BakeMode {
         NONE,
         ATTRACT,
-        REPEL
+        BARRIER
     }
 
     private static class BakeState{
@@ -133,14 +133,28 @@ public class SegmentationController {
         final int frame;
         final int channel;
         final double[] targetData;
+        final boolean[] barrierInsideMask;
+        final int[] barrierNearestAllowed;
+        final boolean keepOutside;
         ImagePlus overlayPlus;
         List<Roi> overlayRois;
 
-        BakeState(BakeMode mode, int frame, int channel, double[] targetData){
+        BakeState(
+                BakeMode mode,
+                int frame,
+                int channel,
+                double[] targetData,
+                boolean[] barrierInsideMask,
+                int[] barrierNearestAllowed,
+                boolean keepOutside
+        ){
             this.mode = mode;
             this.frame = frame;
             this.channel = channel;
             this.targetData = targetData;
+            this.barrierInsideMask = barrierInsideMask;
+            this.barrierNearestAllowed = barrierNearestAllowed;
+            this.keepOutside = keepOutside;
         }
     }
 
@@ -160,8 +174,7 @@ public class SegmentationController {
     private BakeMode bakeModeSelection = BakeMode.ATTRACT;
     private double bakeBlend = 0.25;
     private double bakeStrength = 0.5;
-    private int repelRadius = 6;
-    private double repelSlope = 2.0;
+    private boolean barrierKeepOutside = true;
 
     /**
      * Creates a controller for the supplied model.
@@ -170,6 +183,7 @@ public class SegmentationController {
      */
     public SegmentationController(SegmentationModel model){
         this.model = model;
+        this.model.setPostUpdateConstraint(this::applyBarrierConstraintForMesh);
         try {
             model.setRingController(new FurrowController(this));
             actionStack.addStateListener(s->{
@@ -2959,15 +2973,27 @@ public class SegmentationController {
             return false;
         }
         boolean[] outline = MeshBakeUtils.createOutlineMask(stack, mesh);
-        double[] targetData;
-        if(mode == BakeMode.REPEL){
-            targetData = MeshBakeUtils.createRepelCeilingField(stack, mesh, repelRadius, repelSlope);
+        double[] targetData = null;
+        boolean[] barrierInside = null;
+        int[] nearestAllowed = null;
+        if(mode == BakeMode.BARRIER){
+            barrierInside = MeshBakeUtils.createInsideMask(stack, mesh);
+            boolean[] forbidden = new boolean[barrierInside.length];
+            for(int i = 0; i<barrierInside.length; i++){
+                forbidden[i] = barrierKeepOutside ? barrierInside[i] : !barrierInside[i];
+            }
+            nearestAllowed = MeshBakeUtils.createNearestAllowedMap(
+                    forbidden,
+                    stack.getWidthPx(),
+                    stack.getHeightPx(),
+                    stack.getNSlices()
+            );
         } else{
             targetData = MeshBakeUtils.createBakeTargetField(stack, mesh, bakeShells);
         }
         stack.setBakeBlend(bakeBlend);
         stack.setBakeStrength(bakeStrength);
-        BakeState state = new BakeState(mode, frame, channel, targetData);
+        BakeState state = new BakeState(mode, frame, channel, targetData, barrierInside, nearestAllowed, barrierKeepOutside);
         BakeState previous = bakedTrackStates.put(track, state);
         if(previous != null){
             removeBakeOverlay(previous);
@@ -3032,7 +3058,9 @@ public class SegmentationController {
                 continue;
             }
             double[] target = state.targetData == null ? null : Arrays.copyOf(state.targetData, state.targetData.length);
-            snapshot.put(entry.getKey(), new BakeState(state.mode, state.frame, state.channel, target));
+            boolean[] inside = state.barrierInsideMask == null ? null : Arrays.copyOf(state.barrierInsideMask, state.barrierInsideMask.length);
+            int[] nearest = state.barrierNearestAllowed == null ? null : Arrays.copyOf(state.barrierNearestAllowed, state.barrierNearestAllowed.length);
+            snapshot.put(entry.getKey(), new BakeState(state.mode, state.frame, state.channel, target, inside, nearest, state.keepOutside));
         }
         return snapshot;
     }
@@ -3046,7 +3074,9 @@ public class SegmentationController {
                     continue;
                 }
                 double[] target = state.targetData == null ? null : Arrays.copyOf(state.targetData, state.targetData.length);
-                bakedTrackStates.put(entry.getKey(), new BakeState(state.mode, state.frame, state.channel, target));
+                boolean[] inside = state.barrierInsideMask == null ? null : Arrays.copyOf(state.barrierInsideMask, state.barrierInsideMask.length);
+                int[] nearest = state.barrierNearestAllowed == null ? null : Arrays.copyOf(state.barrierNearestAllowed, state.barrierNearestAllowed.length);
+                bakedTrackStates.put(entry.getKey(), new BakeState(state.mode, state.frame, state.channel, target, inside, nearest, state.keepOutside));
             }
         }
         restoreBakeOverlays();
@@ -3139,7 +3169,6 @@ public class SegmentationController {
         int frame = getCurrentFrame();
         int channel = getCurrentChannel();
         double[] attractCombined = null;
-        double[] repelCombined = null;
         for(Map.Entry<Track, BakeState> entry: bakedTrackStates.entrySet()){
             BakeState state = entry.getValue();
             if(state == null || state.targetData == null){
@@ -3150,17 +3179,12 @@ public class SegmentationController {
             }
             if(state.mode == BakeMode.ATTRACT){
                 attractCombined = maxCombine(attractCombined, state.targetData);
-            } else if(state.mode == BakeMode.REPEL){
-                if(samplingTrack != null && samplingTrack == entry.getKey()){
-                    continue;
-                }
-                repelCombined = minCombine(repelCombined, state.targetData);
             }
         }
-        if(attractCombined == null && repelCombined == null){
+        if(attractCombined == null){
             stack.clearCombinedBakeFields();
         } else{
-            stack.setCombinedBakeFields(attractCombined, repelCombined, null);
+            stack.setCombinedBakeFields(attractCombined, null, null);
         }
     }
 
@@ -3189,21 +3213,6 @@ public class SegmentationController {
         }
         for(int i = 0; i<combined.length; i++){
             if(source[i] > combined[i]){
-                combined[i] = source[i];
-            }
-        }
-        return combined;
-    }
-
-    private double[] minCombine(double[] combined, double[] source){
-        if(source == null){
-            return combined;
-        }
-        if(combined == null){
-            return Arrays.copyOf(source, source.length);
-        }
-        for(int i = 0; i<combined.length; i++){
-            if(source[i] < combined[i]){
                 combined[i] = source[i];
             }
         }
@@ -3248,26 +3257,12 @@ public class SegmentationController {
         return bakeStrength;
     }
 
-    public void setRepelRadius(int repelRadius){
-        if(repelRadius < 1){
-            repelRadius = 1;
-        }
-        this.repelRadius = repelRadius;
+    public void setBarrierKeepOutside(boolean barrierKeepOutside){
+        this.barrierKeepOutside = barrierKeepOutside;
     }
 
-    public int getRepelRadius(){
-        return repelRadius;
-    }
-
-    public void setRepelSlope(double repelSlope){
-        if(repelSlope < 0.1){
-            repelSlope = 0.1;
-        }
-        this.repelSlope = repelSlope;
-    }
-
-    public double getRepelSlope(){
-        return repelSlope;
+    public boolean isBarrierKeepOutside(){
+        return barrierKeepOutside;
     }
 
     private void applyBakeOverlay(Track track, MeshImageStack stack, boolean[] outline, int frame, int channel){
@@ -3357,6 +3352,89 @@ public class SegmentationController {
             clearAllBakeStates();
             return true;
         });
+    }
+
+    private void applyBarrierConstraintForMesh(DeformableMesh3D mesh){
+        if(mesh == null){
+            return;
+        }
+        MeshImageStack stack = getMeshImageStack();
+        if(stack == null){
+            return;
+        }
+        Track targetTrack = getAllTracks().stream().filter(t -> t.containsMesh(mesh)).findFirst().orElse(null);
+        if(targetTrack == null){
+            return;
+        }
+        int frame = getCurrentFrame();
+        int channel = getCurrentChannel();
+        for(Map.Entry<Track, BakeState> entry: bakedTrackStates.entrySet()){
+            BakeState state = entry.getValue();
+            if(state == null || state.mode != BakeMode.BARRIER){
+                continue;
+            }
+            if(entry.getKey() == targetTrack){
+                continue;
+            }
+            if(state.frame != frame || state.channel != channel){
+                continue;
+            }
+            enforceBarrier(mesh, stack, state);
+        }
+    }
+
+    private void enforceBarrier(DeformableMesh3D mesh, MeshImageStack stack, BakeState state){
+        if(state.barrierInsideMask == null || state.barrierNearestAllowed == null){
+            return;
+        }
+        int width = stack.getWidthPx();
+        int height = stack.getHeightPx();
+        int depth = stack.getNSlices();
+        int sliceSize = width*height;
+        boolean moved = false;
+        for(int i = 0; i<mesh.positions.length/3; i++){
+            int p = i*3;
+            double[] xyz = new double[]{mesh.positions[p], mesh.positions[p + 1], mesh.positions[p + 2]};
+            if(!stack.contains(xyz)){
+                continue;
+            }
+            double[] img = stack.getImageCoordinates(xyz);
+            int x = clampIndex((int)Math.round(img[0]), width);
+            int y = clampIndex((int)Math.round(img[1]), height);
+            int z = clampIndex((int)Math.round(img[2]), depth);
+            int idx = x + y*width + z*sliceSize;
+            boolean inside = state.barrierInsideMask[idx];
+            boolean forbidden = state.keepOutside ? inside : !inside;
+            if(!forbidden){
+                continue;
+            }
+            int nearest = state.barrierNearestAllowed[idx];
+            if(nearest < 0){
+                continue;
+            }
+            int nz = nearest/sliceSize;
+            int rem = nearest - nz*sliceSize;
+            int ny = rem/width;
+            int nx = rem - ny*width;
+            double[] projected = stack.getNormalizedCoordinate(new double[]{nx + 0.5, ny + 0.5, nz + 0.5});
+            mesh.positions[p] = projected[0];
+            mesh.positions[p + 1] = projected[1];
+            mesh.positions[p + 2] = projected[2];
+            moved = true;
+        }
+        if(moved){
+            mesh.resetPositions();
+        }
+    }
+
+    private int clampIndex(int value, int size){
+        if(value < 0){
+            return 0;
+        }
+        if(value >= size){
+            return size - 1;
+        }
+        return value;
     }
 
     private void showBakedLockedMessage(){

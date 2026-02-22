@@ -85,59 +85,92 @@ public class MeshBakeUtils {
         return target;
     }
 
-    public static double[] createRepelCeilingField(MeshImageStack stack, DeformableMesh3D mesh, int radius, double slope){
-        boolean[] outline = createOutlineMask(stack, mesh);
-        int shellCount = radius > 0 ? radius : 6;
-        if(slope <= 0){
-            slope = 2.0;
-        }
-        double max = getTypeMaxIntensity(stack);
+    public static boolean[] createInsideMask(MeshImageStack stack, DeformableMesh3D mesh){
+        ImagePlus mask = DeformableMesh3DTools.createBinaryRepresentation(stack, mesh);
         int width = stack.getWidthPx();
         int height = stack.getHeightPx();
         int depth = stack.getNSlices();
         int sliceSize = width*height;
         int total = sliceSize*depth;
-        double[] ceiling = new double[total];
-        for(int i = 0; i<total; i++){
-            ceiling[i] = max;
-        }
-        boolean[] visited = new boolean[total];
-
-        List<Integer> frontier = new ArrayList<>();
-        for(int i = 0; i<total; i++){
-            if(outline[i]){
-                visited[i] = true;
-                frontier.add(i);
+        boolean[] inside = new boolean[total];
+        ImageStack maskStack = mask.getStack();
+        for(int z = 0; z<depth; z++){
+            byte[] pixels = (byte[])maskStack.getProcessor(z + 1).convertToByteProcessor().getPixels();
+            int offset = z*sliceSize;
+            for(int i = 0; i<sliceSize; i++){
+                inside[offset + i] = (pixels[i] & 0xff) > 0;
             }
         }
+        return inside;
+    }
 
-        for(int shell = 0; shell<=shellCount && !frontier.isEmpty(); shell++){
-            double f = shellCount == 0 ? 1.0 : (double)shell/(double)shellCount;
-            double shellValue = max*Math.pow(f, slope);
-            for(Integer idx: frontier){
-                if(shellValue < ceiling[idx]){
-                    ceiling[idx] = shellValue;
+    public static int[] createNearestAllowedMap(boolean[] forbidden, int width, int height, int depth){
+        int sliceSize = width*height;
+        int total = sliceSize*depth;
+        int[] nearest = new int[total];
+        for(int i = 0; i<total; i++){
+            nearest[i] = -1;
+        }
+        int[] queue = new int[total];
+        int head = 0;
+        int tail = 0;
+        for(int i = 0; i<total; i++){
+            if(!forbidden[i]){
+                nearest[i] = i;
+                queue[tail++] = i;
+            }
+        }
+        while(head < tail){
+            int idx = queue[head++];
+            int z = idx/sliceSize;
+            int rem = idx - z*sliceSize;
+            int y = rem/width;
+            int x = rem - y*width;
+            int src = nearest[idx];
+            if(x > 0){
+                int n = idx - 1;
+                if(nearest[n] < 0){
+                    nearest[n] = src;
+                    queue[tail++] = n;
                 }
             }
-            if(shell == shellCount){
-                break;
+            if(x + 1 < width){
+                int n = idx + 1;
+                if(nearest[n] < 0){
+                    nearest[n] = src;
+                    queue[tail++] = n;
+                }
             }
-            List<Integer> nextFrontier = new ArrayList<>();
-            for(Integer idx: frontier){
-                int z = idx/sliceSize;
-                int rem = idx - z*sliceSize;
-                int y = rem/width;
-                int x = rem - y*width;
-                addNeighbor(x - 1, y, z, width, height, depth, visited, nextFrontier);
-                addNeighbor(x + 1, y, z, width, height, depth, visited, nextFrontier);
-                addNeighbor(x, y - 1, z, width, height, depth, visited, nextFrontier);
-                addNeighbor(x, y + 1, z, width, height, depth, visited, nextFrontier);
-                addNeighbor(x, y, z - 1, width, height, depth, visited, nextFrontier);
-                addNeighbor(x, y, z + 1, width, height, depth, visited, nextFrontier);
+            if(y > 0){
+                int n = idx - width;
+                if(nearest[n] < 0){
+                    nearest[n] = src;
+                    queue[tail++] = n;
+                }
             }
-            frontier = nextFrontier;
+            if(y + 1 < height){
+                int n = idx + width;
+                if(nearest[n] < 0){
+                    nearest[n] = src;
+                    queue[tail++] = n;
+                }
+            }
+            if(z > 0){
+                int n = idx - sliceSize;
+                if(nearest[n] < 0){
+                    nearest[n] = src;
+                    queue[tail++] = n;
+                }
+            }
+            if(z + 1 < depth){
+                int n = idx + sliceSize;
+                if(nearest[n] < 0){
+                    nearest[n] = src;
+                    queue[tail++] = n;
+                }
+            }
         }
-        return ceiling;
+        return nearest;
     }
 
     private static double getShellFactor(int shell){

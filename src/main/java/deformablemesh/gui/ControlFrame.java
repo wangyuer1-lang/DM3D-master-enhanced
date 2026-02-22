@@ -651,30 +651,15 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         buttons.add(strength);
 
         gbc.gridx = 4;
-        panel.add(new JLabel("repel radius"), gbc);
+        panel.add(new JLabel("barrier keep"), gbc);
         gbc.gridx = 5;
-        JSpinner repelRadius = new JSpinner(
-                new SpinnerNumberModel(segmentationController.getRepelRadius(), 1, 64, 1)
+        JComboBox<String> barrierKeep = new JComboBox<>(new String[]{"Keep outside", "Keep inside"});
+        barrierKeep.setSelectedIndex(segmentationController.isBarrierKeepOutside() ? 0 : 1);
+        barrierKeep.addActionListener(e ->
+                segmentationController.setBarrierKeepOutside(barrierKeep.getSelectedIndex() == 0)
         );
-        repelRadius.addChangeListener(e -> {
-            int v = ((Number)repelRadius.getValue()).intValue();
-            segmentationController.setRepelRadius(v);
-        });
-        panel.add(repelRadius, gbc);
-        buttons.add(repelRadius);
-
-        gbc.gridx = 6;
-        panel.add(new JLabel("repel slope"), gbc);
-        gbc.gridx = 7;
-        JSpinner repelSlope = new JSpinner(
-                new SpinnerNumberModel(segmentationController.getRepelSlope(), 0.1, 10.0, 0.1)
-        );
-        repelSlope.addChangeListener(e -> {
-            double v = ((Number)repelSlope.getValue()).doubleValue();
-            segmentationController.setRepelSlope(v);
-        });
-        panel.add(repelSlope, gbc);
-        buttons.add(repelSlope);
+        panel.add(barrierKeep, gbc);
+        buttons.add(barrierKeep);
         return panel;
     }
 
@@ -684,18 +669,18 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         panel.setOpaque(false);
         ButtonGroup group = new ButtonGroup();
         JRadioButton attract = new JRadioButton("Attract");
-        JRadioButton repel = new JRadioButton("Repel");
+        JRadioButton barrier = new JRadioButton("Barrier");
         attract.setOpaque(false);
-        repel.setOpaque(false);
+        barrier.setOpaque(false);
         attract.setSelected(true);
         attract.addActionListener(e -> segmentationController.setBakeModeSelection(SegmentationController.BakeMode.ATTRACT));
-        repel.addActionListener(e -> segmentationController.setBakeModeSelection(SegmentationController.BakeMode.REPEL));
+        barrier.addActionListener(e -> segmentationController.setBakeModeSelection(SegmentationController.BakeMode.BARRIER));
         group.add(attract);
-        group.add(repel);
+        group.add(barrier);
         panel.add(attract);
-        panel.add(repel);
+        panel.add(barrier);
         buttons.add(attract);
-        buttons.add(repel);
+        buttons.add(barrier);
         return panel;
     }
 
