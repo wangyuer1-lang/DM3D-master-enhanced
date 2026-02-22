@@ -22,7 +22,7 @@ public class MeshBakeUtils {
         return createOutlineMask(mask);
     }
 
-    private static double getBakeValue(MeshImageStack stack){
+    private static double getTypeMaxIntensity(MeshImageStack stack){
         switch(stack.getType()){
             case MeshImageStack.INT8:
                 return 255.0;
@@ -38,7 +38,7 @@ public class MeshBakeUtils {
     public static double[] createBakeTargetField(MeshImageStack stack, DeformableMesh3D mesh, int shells){
         boolean[] outline = createOutlineMask(stack, mesh);
         int shellCount = shells > 0 ? shells : DEFAULT_SHELL_FACTORS.length;
-        double peak = getBakeValue(stack);
+        double peak = getTypeMaxIntensity(stack);
         int width = stack.getWidthPx();
         int height = stack.getHeightPx();
         int depth = stack.getNSlices();
@@ -83,6 +83,61 @@ public class MeshBakeUtils {
         }
 
         return target;
+    }
+
+    public static double[] createRepelCeilingField(MeshImageStack stack, DeformableMesh3D mesh, int radius, double slope){
+        boolean[] outline = createOutlineMask(stack, mesh);
+        int shellCount = radius > 0 ? radius : 6;
+        if(slope <= 0){
+            slope = 2.0;
+        }
+        double max = getTypeMaxIntensity(stack);
+        int width = stack.getWidthPx();
+        int height = stack.getHeightPx();
+        int depth = stack.getNSlices();
+        int sliceSize = width*height;
+        int total = sliceSize*depth;
+        double[] ceiling = new double[total];
+        for(int i = 0; i<total; i++){
+            ceiling[i] = max;
+        }
+        boolean[] visited = new boolean[total];
+
+        List<Integer> frontier = new ArrayList<>();
+        for(int i = 0; i<total; i++){
+            if(outline[i]){
+                visited[i] = true;
+                frontier.add(i);
+            }
+        }
+
+        for(int shell = 0; shell<=shellCount && !frontier.isEmpty(); shell++){
+            double f = shellCount == 0 ? 1.0 : (double)shell/(double)shellCount;
+            double shellValue = max*Math.pow(f, slope);
+            for(Integer idx: frontier){
+                if(shellValue < ceiling[idx]){
+                    ceiling[idx] = shellValue;
+                }
+            }
+            if(shell == shellCount){
+                break;
+            }
+            List<Integer> nextFrontier = new ArrayList<>();
+            for(Integer idx: frontier){
+                int z = idx/sliceSize;
+                int rem = idx - z*sliceSize;
+                int y = rem/width;
+                int x = rem - y*width;
+                addNeighbor(x - 1, y, z, width, height, depth, visited, nextFrontier);
+                addNeighbor(x + 1, y, z, width, height, depth, visited, nextFrontier);
+                addNeighbor(x, y - 1, z, width, height, depth, visited, nextFrontier);
+                addNeighbor(x, y + 1, z, width, height, depth, visited, nextFrontier);
+                addNeighbor(x, y, z - 1, width, height, depth, visited, nextFrontier);
+                addNeighbor(x, y, z + 1, width, height, depth, visited, nextFrontier);
+            }
+            frontier = nextFrontier;
+        }
+        return ceiling;
     }
 
     private static double getShellFactor(int shell){

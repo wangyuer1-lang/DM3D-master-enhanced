@@ -459,17 +459,12 @@ public class MeshImageStack {
             return base;
         }
         if(bakeRepelCombined != null){
-            double repel = interpolateFromArray(bakeRepelCombined, xyz);
-            if(bakeRepelSelfExclusion != null){
-                repel -= interpolateFromArray(bakeRepelSelfExclusion, xyz);
-                if(repel < 0){
-                    repel = 0;
-                }
+            double ceiling = interpolateFromArray(bakeRepelCombined, xyz);
+            double capped = Math.min(base, ceiling);
+            if(capped + 1e-9 < base){
+                return clampToTypeRange(capped);
             }
-            if(repel > 1e-9){
-                // Repel is an exclusion mask: block baked attraction and return unmodified base.
-                return base;
-            }
+            base = capped;
         }
         double eff = base;
         if(bakeAttractCombined != null){

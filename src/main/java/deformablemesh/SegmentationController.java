@@ -160,6 +160,8 @@ public class SegmentationController {
     private BakeMode bakeModeSelection = BakeMode.ATTRACT;
     private double bakeBlend = 0.25;
     private double bakeStrength = 0.5;
+    private int repelRadius = 6;
+    private double repelSlope = 2.0;
 
     /**
      * Creates a controller for the supplied model.
@@ -2957,7 +2959,12 @@ public class SegmentationController {
             return false;
         }
         boolean[] outline = MeshBakeUtils.createOutlineMask(stack, mesh);
-        double[] targetData = MeshBakeUtils.createBakeTargetField(stack, mesh, bakeShells);
+        double[] targetData;
+        if(mode == BakeMode.REPEL){
+            targetData = MeshBakeUtils.createRepelCeilingField(stack, mesh, repelRadius, repelSlope);
+        } else{
+            targetData = MeshBakeUtils.createBakeTargetField(stack, mesh, bakeShells);
+        }
         stack.setBakeBlend(bakeBlend);
         stack.setBakeStrength(bakeStrength);
         BakeState state = new BakeState(mode, frame, channel, targetData);
@@ -3133,7 +3140,6 @@ public class SegmentationController {
         int channel = getCurrentChannel();
         double[] attractCombined = null;
         double[] repelCombined = null;
-        double[] selfRepelExclusion = null;
         for(Map.Entry<Track, BakeState> entry: bakedTrackStates.entrySet()){
             BakeState state = entry.getValue();
             if(state == null || state.targetData == null){
@@ -3145,16 +3151,16 @@ public class SegmentationController {
             if(state.mode == BakeMode.ATTRACT){
                 attractCombined = maxCombine(attractCombined, state.targetData);
             } else if(state.mode == BakeMode.REPEL){
-                repelCombined = maxCombine(repelCombined, state.targetData);
                 if(samplingTrack != null && samplingTrack == entry.getKey()){
-                    selfRepelExclusion = maxCombine(selfRepelExclusion, state.targetData);
+                    continue;
                 }
+                repelCombined = minCombine(repelCombined, state.targetData);
             }
         }
         if(attractCombined == null && repelCombined == null){
             stack.clearCombinedBakeFields();
         } else{
-            stack.setCombinedBakeFields(attractCombined, repelCombined, selfRepelExclusion);
+            stack.setCombinedBakeFields(attractCombined, repelCombined, null);
         }
     }
 
@@ -3183,6 +3189,21 @@ public class SegmentationController {
         }
         for(int i = 0; i<combined.length; i++){
             if(source[i] > combined[i]){
+                combined[i] = source[i];
+            }
+        }
+        return combined;
+    }
+
+    private double[] minCombine(double[] combined, double[] source){
+        if(source == null){
+            return combined;
+        }
+        if(combined == null){
+            return Arrays.copyOf(source, source.length);
+        }
+        for(int i = 0; i<combined.length; i++){
+            if(source[i] < combined[i]){
                 combined[i] = source[i];
             }
         }
@@ -3225,6 +3246,28 @@ public class SegmentationController {
 
     public double getBakeStrength(){
         return bakeStrength;
+    }
+
+    public void setRepelRadius(int repelRadius){
+        if(repelRadius < 1){
+            repelRadius = 1;
+        }
+        this.repelRadius = repelRadius;
+    }
+
+    public int getRepelRadius(){
+        return repelRadius;
+    }
+
+    public void setRepelSlope(double repelSlope){
+        if(repelSlope < 0.1){
+            repelSlope = 0.1;
+        }
+        this.repelSlope = repelSlope;
+    }
+
+    public double getRepelSlope(){
+        return repelSlope;
     }
 
     private void applyBakeOverlay(Track track, MeshImageStack stack, boolean[] outline, int frame, int channel){

@@ -649,6 +649,32 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         });
         panel.add(strength, gbc);
         buttons.add(strength);
+
+        gbc.gridx = 4;
+        panel.add(new JLabel("repel radius"), gbc);
+        gbc.gridx = 5;
+        JSpinner repelRadius = new JSpinner(
+                new SpinnerNumberModel(segmentationController.getRepelRadius(), 1, 64, 1)
+        );
+        repelRadius.addChangeListener(e -> {
+            int v = ((Number)repelRadius.getValue()).intValue();
+            segmentationController.setRepelRadius(v);
+        });
+        panel.add(repelRadius, gbc);
+        buttons.add(repelRadius);
+
+        gbc.gridx = 6;
+        panel.add(new JLabel("repel slope"), gbc);
+        gbc.gridx = 7;
+        JSpinner repelSlope = new JSpinner(
+                new SpinnerNumberModel(segmentationController.getRepelSlope(), 0.1, 10.0, 0.1)
+        );
+        repelSlope.addChangeListener(e -> {
+            double v = ((Number)repelSlope.getValue()).doubleValue();
+            segmentationController.setRepelSlope(v);
+        });
+        panel.add(repelSlope, gbc);
+        buttons.add(repelSlope);
         return panel;
     }
 
@@ -1105,22 +1131,8 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         });
         redo.setEnabled(false);
 
-        edit.addSeparator();
-        JMenuItem bakeMesh = new JMenuItem("Bake mesh");
-        bakeMesh.addActionListener(new UiAction(segmentationController::bakeSelectedMesh));
-        edit.add(bakeMesh);
-
-        JMenuItem unbakeMesh = new JMenuItem("Unbake mesh");
-        unbakeMesh.addActionListener(new UiAction(segmentationController::unbakeSelectedMesh));
-        edit.add(unbakeMesh);
-
-        JMenuItem unbakeAll = new JMenuItem("Unbake all");
-        unbakeAll.addActionListener(new UiAction(segmentationController::unbakeAllMeshes));
-        edit.add(unbakeAll);
-
         JMenuItem clearHistory = new JMenuItem("clear undo history");
         clearHistory.addActionListener(new UiAction(segmentationController::clearHistory));
-        edit.addSeparator();
         edit.add(clearHistory);
         return edit;
     }
