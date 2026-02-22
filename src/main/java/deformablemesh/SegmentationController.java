@@ -113,6 +113,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 
 /**
@@ -2901,38 +2902,70 @@ public class SegmentationController {
     }
 
     public void setBakeSelectedMeshEnabled(boolean enabled){
-        submit(() -> {
-            if(enabled){
-                enableBakeSelectedMesh();
-            } else{
-                disableBakeSelectedMesh();
-            }
-        });
+        if(enabled){
+            bakeSelectedMesh();
+        } else{
+            unbakeSelectedMesh();
+        }
     }
 
-    private void enableBakeSelectedMesh(){
+    public void toggleBakeSelectedMesh(){
         Track selectedTrack = getSelectedMeshTrack();
-        if(selectedTrack == null){
+        DeformableMesh3D selectedMesh = getSelectedMesh();
+        if(selectedTrack == null || selectedMesh == null){
+            IJ.error("Please select a mesh first");
             return;
         }
         if(isTrackBaked(selectedTrack)){
-            return;
+            postBakeStateAction("unbake mesh", () -> removeBakeForTrack(selectedTrack));
+        } else{
+            int frame = getCurrentFrame();
+            int channel = getCurrentChannel();
+            BakeMode mode = bakeModeSelection == null ? BakeMode.ATTRACT : bakeModeSelection;
+            postBakeStateAction("bake mesh", () -> setBakeForTrack(selectedTrack, selectedMesh, frame, channel, mode));
         }
-        MeshImageStack stack = getMeshImageStack();
-        DeformableMesh3D mesh = getSelectedMesh();
-        if(stack == null || mesh == null || stack.getOriginalPlus() == null){
+    }
+
+    public void bakeSelectedMesh(){
+        Track selectedTrack = getSelectedMeshTrack();
+        DeformableMesh3D selectedMesh = getSelectedMesh();
+        if(selectedTrack == null || selectedMesh == null){
+            IJ.error("Please select a mesh first");
             return;
         }
         int frame = getCurrentFrame();
         int channel = getCurrentChannel();
+        BakeMode mode = bakeModeSelection == null ? BakeMode.ATTRACT : bakeModeSelection;
+        postBakeStateAction("bake mesh", () -> setBakeForTrack(selectedTrack, selectedMesh, frame, channel, mode));
+    }
+
+    public void unbakeSelectedMesh(){
+        Track selectedTrack = getSelectedMeshTrack();
+        if(selectedTrack == null){
+            IJ.error("Please select a mesh first");
+            return;
+        }
+        if(!isTrackBaked(selectedTrack)){
+            return;
+        }
+        postBakeStateAction("unbake mesh", () -> removeBakeForTrack(selectedTrack));
+    }
+
+    private boolean setBakeForTrack(Track track, DeformableMesh3D mesh, int frame, int channel, BakeMode mode){
+        MeshImageStack stack = getMeshImageStack();
+        if(stack == null || mesh == null || stack.getOriginalPlus() == null){
+            return false;
+        }
         boolean[] outline = MeshBakeUtils.createOutlineMask(stack, mesh);
         double[] targetData = MeshBakeUtils.createBakeTargetField(stack, mesh, bakeShells);
         stack.setBakeBlend(bakeBlend);
         stack.setBakeStrength(bakeStrength);
-        BakeState state = new BakeState(bakeModeSelection, frame, channel, targetData);
-        bakedTrackStates.put(selectedTrack, state);
-        applyBakeOverlay(selectedTrack, stack, outline, frame, channel);
-        syncBakeTargetForCurrentView(selectedTrack);
+        BakeState state = new BakeState(mode, frame, channel, targetData);
+        BakeState previous = bakedTrackStates.put(track, state);
+        if(previous != null){
+            removeBakeOverlay(previous);
+        }
+        applyBakeOverlay(track, stack, outline, frame, channel);
         if(mesh.positions.length >= 3){
             double[] pt = new double[]{mesh.positions[0], mesh.positions[1], mesh.positions[2]};
             double before = stack.getInterpolatedBaseValue(pt);
@@ -2940,30 +2973,21 @@ public class SegmentationController {
             IJ.log(String.format(Locale.US, "Bake debug at vertex: I_base=%.3f I_eff=%.3f", before, after));
         }
         refreshCurrentFrameIfShowing(frame, channel);
-        model.notifyMeshListeners();
         FurrowController ringController = getRingController();
         if(ringController != null){
             ringController.cancel();
         }
+        return true;
     }
 
-    private void disableBakeSelectedMesh(){
-        Track selectedTrack = getSelectedMeshTrack();
-        if(selectedTrack == null){
-            return;
+    private boolean removeBakeForTrack(Track selectedTrack){
+        BakeState state = bakedTrackStates.remove(selectedTrack);
+        if(state == null){
+            return false;
         }
-        if(!isTrackBaked(selectedTrack)){
-            return;
-        }
-        BakeState state = bakedTrackStates.get(selectedTrack);
-        if(state != null){
-            removeBakeOverlay(state);
-            bakedTrackStates.remove(selectedTrack);
-            refreshCurrentFrameIfShowing(state.frame, state.channel);
-        }
-        syncBakeTargetForCurrentView();
-        model.refreshCurrentFrame();
-        model.notifyMeshListeners();
+        removeBakeOverlay(state);
+        refreshCurrentFrameIfShowing(state.frame, state.channel);
+        return true;
     }
 
     private void refreshCurrentFrameIfShowing(int frame, int channel){
@@ -2991,6 +3015,92 @@ public class SegmentationController {
         }
         syncBakeTargetForCurrentView();
         model.notifyMeshListeners();
+    }
+
+    private Map<Track, BakeState> snapshotBakeStates(){
+        Map<Track, BakeState> snapshot = new HashMap<>();
+        for(Map.Entry<Track, BakeState> entry: bakedTrackStates.entrySet()){
+            BakeState state = entry.getValue();
+            if(state == null){
+                continue;
+            }
+            double[] target = state.targetData == null ? null : Arrays.copyOf(state.targetData, state.targetData.length);
+            snapshot.put(entry.getKey(), new BakeState(state.mode, state.frame, state.channel, target));
+        }
+        return snapshot;
+    }
+
+    private void applyBakeStateSnapshot(Map<Track, BakeState> snapshot){
+        clearAllBakeStates();
+        if(snapshot != null){
+            for(Map.Entry<Track, BakeState> entry: snapshot.entrySet()){
+                BakeState state = entry.getValue();
+                if(state == null){
+                    continue;
+                }
+                double[] target = state.targetData == null ? null : Arrays.copyOf(state.targetData, state.targetData.length);
+                bakedTrackStates.put(entry.getKey(), new BakeState(state.mode, state.frame, state.channel, target));
+            }
+        }
+        restoreBakeOverlays();
+        syncBakeTargetForCurrentView();
+        model.refreshCurrentFrame();
+        model.notifyMeshListeners();
+    }
+
+    private void restoreBakeOverlays(){
+        MeshImageStack stack = getMeshImageStack();
+        if(stack == null || stack.getOriginalPlus() == null){
+            return;
+        }
+        for(Map.Entry<Track, BakeState> entry: bakedTrackStates.entrySet()){
+            Track track = entry.getKey();
+            BakeState state = entry.getValue();
+            if(track == null || state == null){
+                continue;
+            }
+            DeformableMesh3D mesh = track.getMesh(state.frame);
+            if(mesh == null){
+                continue;
+            }
+            boolean[] outline = MeshBakeUtils.createOutlineMask(stack, mesh);
+            applyBakeOverlay(track, stack, outline, state.frame, state.channel);
+        }
+    }
+
+    private void postBakeStateAction(String actionName, BooleanSupplier performer){
+        final Map<Track, BakeState> before = snapshotBakeStates();
+        actionStack.postAction(new UndoableActions() {
+            Map<Track, BakeState> after = before;
+            @Override
+            public void perform() {
+                submit(() -> {
+                    boolean changed = performer.getAsBoolean();
+                    if(!changed){
+                        return;
+                    }
+                    after = snapshotBakeStates();
+                    syncBakeTargetForCurrentView();
+                    model.refreshCurrentFrame();
+                    model.notifyMeshListeners();
+                });
+            }
+
+            @Override
+            public void undo() {
+                submit(() -> applyBakeStateSnapshot(before));
+            }
+
+            @Override
+            public void redo() {
+                submit(() -> applyBakeStateSnapshot(after));
+            }
+
+            @Override
+            public String getName(){
+                return actionName;
+            }
+        });
     }
 
     private void setMeshesClearingBake(List<Track> tracks){
@@ -3197,11 +3307,12 @@ public class SegmentationController {
     }
 
     public void unbakeAllMeshes(){
-        submit(() -> {
+        if(bakedTrackStates.isEmpty()){
+            return;
+        }
+        postBakeStateAction("unbake all meshes", () -> {
             clearAllBakeStates();
-            syncBakeTargetForCurrentView();
-            model.refreshCurrentFrame();
-            model.notifyMeshListeners();
+            return true;
         });
     }
 

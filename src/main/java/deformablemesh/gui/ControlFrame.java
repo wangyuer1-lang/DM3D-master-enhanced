@@ -610,14 +610,7 @@ public class ControlFrame implements ReadyObserver, FrameListener {
     public JButton createButtonBakeMesh(){
         bakeMeshButton = new JButton("Bake mesh");
         buttons.add(bakeMeshButton);
-        bakeMeshButton.addActionListener(evt -> {
-            if(segmentationController.getSelectedMeshTrack() == null || segmentationController.getSelectedMesh() == null){
-                IJ.error("Please select a mesh first");
-                return;
-            }
-            boolean enableBake = !segmentationController.isSelectedTrackBaked();
-            segmentationController.setBakeSelectedMeshEnabled(enableBake);
-        });
+        bakeMeshButton.addActionListener(evt -> segmentationController.toggleBakeSelectedMesh());
         return bakeMeshButton;
     }
 
@@ -1112,8 +1105,23 @@ public class ControlFrame implements ReadyObserver, FrameListener {
         });
         redo.setEnabled(false);
 
+        edit.addSeparator();
+        JMenuItem bakeMesh = new JMenuItem("Bake mesh");
+        bakeMesh.addActionListener(new UiAction(segmentationController::bakeSelectedMesh));
+        edit.add(bakeMesh);
+
+        JMenuItem unbakeMesh = new JMenuItem("Unbake mesh");
+        unbakeMesh.addActionListener(new UiAction(segmentationController::unbakeSelectedMesh));
+        edit.add(unbakeMesh);
+
+        JMenuItem unbakeAll = new JMenuItem("Unbake all");
+        unbakeAll.addActionListener(new UiAction(segmentationController::unbakeAllMeshes));
+        edit.add(unbakeAll);
+
         JMenuItem clearHistory = new JMenuItem("clear undo history");
         clearHistory.addActionListener(new UiAction(segmentationController::clearHistory));
+        edit.addSeparator();
+        edit.add(clearHistory);
         return edit;
     }
     public JMenu createMenuTrack(){

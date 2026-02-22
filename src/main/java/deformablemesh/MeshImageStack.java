@@ -458,6 +458,19 @@ public class MeshImageStack {
         if(bakeAttractCombined == null && bakeRepelCombined == null){
             return base;
         }
+        if(bakeRepelCombined != null){
+            double repel = interpolateFromArray(bakeRepelCombined, xyz);
+            if(bakeRepelSelfExclusion != null){
+                repel -= interpolateFromArray(bakeRepelSelfExclusion, xyz);
+                if(repel < 0){
+                    repel = 0;
+                }
+            }
+            if(repel > 1e-9){
+                // Repel is an exclusion mask: block baked attraction and return unmodified base.
+                return base;
+            }
+        }
         double eff = base;
         if(bakeAttractCombined != null){
             double target = interpolateFromArray(bakeAttractCombined, xyz);
@@ -471,16 +484,6 @@ public class MeshImageStack {
                 double effN = baseN + strength*softplus(beta*dN)/beta;
                 eff = clampToTypeRange(effN*max);
             }
-        }
-        if(bakeRepelCombined != null){
-            double repel = interpolateFromArray(bakeRepelCombined, xyz);
-            if(bakeRepelSelfExclusion != null){
-                repel -= interpolateFromArray(bakeRepelSelfExclusion, xyz);
-                if(repel < 0){
-                    repel = 0;
-                }
-            }
-            eff = eff - bakeStrength*repel;
         }
         return clampToTypeRange(eff);
     }
