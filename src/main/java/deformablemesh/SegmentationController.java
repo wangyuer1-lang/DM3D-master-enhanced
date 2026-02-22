@@ -2122,10 +2122,6 @@ public class SegmentationController {
      * @param steps
      */
     public void deformAllMeshes(int steps){
-        if(isSelectedTrackBaked()){
-            showBakedLockedMessage();
-        }
-
         List<Track> tracks = model.getAllTracks();
         deformMeshes(steps, tracks);
     }

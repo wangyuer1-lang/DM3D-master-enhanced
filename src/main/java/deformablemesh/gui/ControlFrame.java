@@ -54,6 +54,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
+import javax.swing.AbstractAction;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
@@ -163,6 +164,7 @@ public class ControlFrame implements ReadyObserver, FrameListener {
 
         frame.setContentPane(contentPanel);
         frame.setJMenuBar(createMenuBar(frame));
+        installGlobalHotkeys();
 
 
         frame.pack();
@@ -176,6 +178,25 @@ public class ControlFrame implements ReadyObserver, FrameListener {
 
     public void setVisible(boolean v){
         frame.setVisible(v);
+    }
+
+    private void installGlobalHotkeys(){
+        JComponent root = frame.getRootPane();
+        final String deformAllAction = "dm3d.deformAll";
+        root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK),
+                deformAllAction
+        );
+        root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.CTRL_MASK),
+                deformAllAction
+        );
+        root.getActionMap().put(deformAllAction, new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                deformAction(true);
+            }
+        });
     }
 
     public void shutdownControllerOnClose(){
