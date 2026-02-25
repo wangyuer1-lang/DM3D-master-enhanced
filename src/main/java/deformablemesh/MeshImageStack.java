@@ -890,6 +890,87 @@ public class MeshImageStack {
         return plus;
     }
 
+    public ImagePlus createBakedSamplingImagePlus(int frame, int channel){
+        if(original == null){
+            throw new IllegalStateException("No source image available.");
+        }
+        if(frame < 0 || frame >= FRAMES){
+            throw new IllegalArgumentException("Requested frame is out of range.");
+        }
+        if(channel < 0 || channel >= CHANNELS){
+            throw new IllegalArgumentException("Requested channel is out of range.");
+        }
+        if(type == INT32){
+            throw new IllegalStateException("RGB image type is not supported for create baked image.");
+        }
+        if(type != INT8 && type != INT16 && type != FLOAT32){
+            throw new IllegalStateException("Unsupported image type for create baked image.");
+        }
+
+        final int slices = getNSlices();
+        final int h = getHeightPx();
+        final int w = getWidthPx();
+        final int wh = w*h;
+        final ImageStack baked = new ImageStack(w, h);
+
+        for(int z = 0; z < slices; z++){
+            ImageProcessor base = getProcessor(frame, channel, z);
+            ImageProcessor out = createTypedProcessor(w, h);
+            int off = z*wh;
+            for(int y = 0; y < h; y++){
+                int row = y*w;
+                for(int x = 0; x < w; x++){
+                    int idx = off + row + x;
+                    double eff = base.getPixelValue(x, y);
+                    if(bakeAttractCombined != null){
+                        double target = bakeAttractCombined[idx];
+                        if(target > eff){
+                            final double strength = 1.0;
+                            final double beta = 6.0;
+                            double max = getBakeNormalizationMax(eff, target);
+                            double baseN = eff/max;
+                            double targetN = target/max;
+                            double dN = targetN - baseN;
+                            double effN = baseN + strength*softplus(beta*dN)/beta;
+                            eff = clampToTypeRange(effN*max);
+                        }
+                    }
+                    if(bakeRepelCombined != null){
+                        double ceiling = bakeRepelCombined[idx];
+                        eff = Math.min(eff, ceiling);
+                    }
+                    eff = clampToTypeRange(eff);
+                    if(type == FLOAT32){
+                        out.setf(x, y, (float)eff);
+                    } else{
+                        out.set(x, y, (int)Math.round(eff));
+                    }
+                }
+            }
+            baked.addSlice(getSliceLabel(getProcessorIndex(frame, channel, z)), out);
+        }
+
+        ImagePlus plus = createImagePlus();
+        plus.setTitle(getShortTitle() + "-baked-image");
+        plus.setStack(baked, 1, slices, 1);
+        Calibration cal = original.getCalibration();
+        if(cal != null){
+            plus.setCalibration(cal.copy());
+        }
+        return plus;
+    }
+
+    private ImageProcessor createTypedProcessor(int w, int h){
+        if(type == INT8){
+            return new ByteProcessor(w, h);
+        } else if(type == INT16){
+            return new ShortProcessor(w, h);
+        } else if(type == FLOAT32){
+            return new FloatProcessor(w, h);
+        }
+        throw new IllegalStateException("Unsupported image type for create baked image.");
+    }
+
     public ImagePlus getCurrentFrameScaled(int xf, int yf){
         ImagePlus imp = getCurrentFrame();
         return Scaler.resize(imp, xf, yf, imp.getNSlices(), "none");
