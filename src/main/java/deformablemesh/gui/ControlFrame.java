@@ -1302,6 +1302,11 @@ public class ControlFrame implements ReadyObserver, FrameListener {
             segmentationController.createMosaicImage();
         });
 
+        JMenuItem baked = new JMenuItem("create baked image");
+        tools.add(baked);
+        baked.setToolTipText("Creates a new image with baked sampling intensities for the current frame/channel.");
+        baked.addActionListener(evt -> segmentationController.createBakedImage());
+
         JMenuItem allVolumes = new JMenuItem("Measure All Volumes");
         tools.add(allVolumes);
         allVolumes.addActionListener(evt->{

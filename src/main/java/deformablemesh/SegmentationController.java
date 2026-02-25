@@ -3712,6 +3712,34 @@ public class SegmentationController {
 
     }
 
+    public void createBakedImage(){
+        submit(() -> {
+            MeshImageStack stack = getMeshImageStack();
+            if(stack == null){
+                IJ.showMessage("No image loaded.");
+                return;
+            }
+            syncBakeTargetForCurrentView();
+            ImagePlus baked;
+            try{
+                baked = stack.createBakedSamplingImagePlus(getCurrentFrame(), getCurrentChannel());
+            } catch(RuntimeException ex){
+                IJ.showMessage(ex.getMessage());
+                return;
+            }
+            ImagePlus source = stack.getOriginalPlus();
+            if(source != null){
+                baked.setDisplayRange(source.getDisplayRangeMin(), source.getDisplayRangeMax());
+                ImageProcessor srcProcessor = source.getProcessor();
+                ImageProcessor outProcessor = baked.getProcessor();
+                if(srcProcessor != null && outProcessor != null && srcProcessor.getColorModel() != null){
+                    outProcessor.setColorModel(srcProcessor.getColorModel());
+                }
+            }
+            baked.show();
+        });
+    }
+
     /**
      * Measures the volumes for all of the mesh tracks, creates a text window with the data like.
      * #frame\ttrack1\ttrack2 ...
